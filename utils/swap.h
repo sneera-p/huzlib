@@ -1,18 +1,25 @@
 #ifndef _SNEERA_SWAP_H
 #define _SNEERA_SWAP_H
 
-#include "type.h"
-#include "unique.h"
+#include "types.h"
 
 
-/**
- * SWAP - swap the values of two variables
- * @a:		first variable
- * @b:		second variable
+/* __swap_concat(a, b)
+ * -------------------
+ * internal cancatation utility used to
+ * create unique tmp varaible name in SWAP
  *
- * Swaps the values of variables @a and @b using a temporary variable of the
- * appropriate type. The macro uses the compiler's typeof operator to determine
- * the type of @b and creates a temporary of that type.
+ * WARN:
+ * This macro is the internal implementation and should not be used directly.
+ */ 
+#define __swap_concat_internal(a, b) a##b
+#define __swap_concat(a, b) __swap_concat_internal(a, b)
+
+
+/*
+ * SWAP(a, b)
+ * ----------
+ * Swaps the values of variables @a and @b using a temporary variable
  *
  * This macro works with any data type, including structures and unions, as
  * long as assignment is supported. It does not require the two variables to
@@ -23,11 +30,11 @@
  * expressions with side effects such as i++, *p++, or function calls.
  * Doing so will result in undefined behavior.
  */
-#define SWAP(a, b) do {                \
-   typecheck(typeof(b), a);            \
-   typeof(b) __unique__(__tmp) = a;    \
-   a = b;                              \
-   b = __unique__(__tmp);              \
+#define SWAP(a, b) do {                            \
+   typecheck_unqual(typeof(a), b);                 \
+   typeof(a) __swap_concat(__tmp, __LINE__) = a;   \
+   a = b;                                          \
+   b = __swap_concat(__tmp, __LINE__);             \
 } while (0)
 
 
