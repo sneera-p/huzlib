@@ -1,6 +1,31 @@
-#ifndef _SNEERA_TYPES_H
-#define _SNEERA_TYPES_H
+#ifndef _HUZLIB_TYPES_H
+#define _HUZLIB_TYPES_H
 
+/*
+ * Use the following compiler detection order in macros to 
+ * avoid my ass being riddled with spice trying to find which 
+ * one of my braincells forgot to add a compiler and maintain 
+ * Human(logn) search time for this particular ass ripping
+ *
+ * Order:
+ *    defined(__NVCC__)
+ *    defined(__INTEL_LLVM_COMPILER)
+ *    defined(__INTEL_COMPILER)
+ *    defined(__ARMCOMPILER_VERSION)
+ *    defined(__ibmxl__)
+ *    defined(__xlC__)
+ *    defined(__zig__)
+ *    defined(__TINYC__)
+ *    defined(__POCC__)
+ *    defined(__SUNPRO_C)
+ *    defined(__SUNPRO_CC)
+ *    defined(_MSC_VER)
+ *    defined(__clang__)
+ *    defined(__GNUC__)
+ *
+ * Prebuilt:
+ *    defined(__NVCC__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__TINYC__) || defined(__POCC__) || defined(__SUNPRO_C) || defined(__SUNPRO_CC) || defined(_MSC_VER) || defined(__clang__) || defined(__GNUC__)
+ */
 
 /*
  * typeof(expr)
@@ -8,7 +33,7 @@
  * Retrieves the exact type of an expression at compile-time.
  */
 #if (__STDC_VERSION__ <= 201710L) && !defined(typeof)
-#if defined(__GNUC__) || defined(__clang__)|| defined(__POCC__) || defined(__TINYC__) || defined(__ICC) || defined(__INTEL_COMPILER)
+#if defined(__NVCC__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__TINYC__) || defined(__POCC__) || defined(__SUNPRO_C) || defined(__SUNPRO_CC) || defined(__clang__) || defined(__GNUC__)
    #define typeof(expr) __typeof__(expr)
 
 #elif defined (_MSC_VER)
@@ -27,7 +52,7 @@
  * Static assert that 'expr' matches 'type' exactly.
  */
 #if !defined(typecheck)
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__NVCC__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
    #define typecheck(type, expr) _Static_assert(            \
       __builtin_types_compatible_p(__typeof__(expr), type), \
       "typecheck(" #expr ", " #type ") failed"              \
@@ -52,10 +77,10 @@
  * Static assert that 'expr' is of base type 'type'.
  */
 #if !defined(typecheck_unqual)
-#if defined(__GNUC__) || defined(__clang__)
-   #define typecheck_unqual(type, expr) _Static_assert(                       \
-      __builtin_types_compatible_p(__typeof__(__builtin_unqual(expr)), type), \
-      "typecheck_unqual(" #expr ", " #type ") failed"                         \
+#if defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20230000) || defined(__ARMCOMPILER_VERSION) && (__ARMCOMPILER_VERSION >= 130000) || defined(__clang__) && (__clang_major__ >= 13) || defined(__GNUC__) && (__GNUC__ >= 11)
+   #define typecheck_unqual(type, expr) _Static_assert(              \
+      __builtin_types_compatible_p(__typeof_unqual__(expr), type),   \
+      "typecheck_unqual(" #expr ", " #type ") failed"                \
    )
 
 #else
@@ -90,8 +115,8 @@
       const type: 1,                      \
       volatile type: 1,                   \
       const volatile type: 1              \
-   ),
-   (expr)
+   ),                                     \
+   (expr)                                 \
 )
 #endif /* typecheck_expr */
 
@@ -119,8 +144,8 @@
    ((type *)((char*)(ptr) - offsetof(type, member)))
 
 
-#if defined(__GNUC__) || defined(__clang__) || defined(__POCC__) || defined(__TINYC__) || defined(__ICC) || defined(__INTEL_COMPILER)
-   #define container_of(ptr, type, member) __extension__ ({  \
+#if defined(__NVCC__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__zig__) || defined(__TINYC__) || defined(__clang__) || defined(__GNUC__)
+   #define container_of(ptr, type, member) __extension__ ({ \
       __typeof__(((type *)0)->member) *__m = (ptr);         \
       __container_of(__m, type, member);                    \
    })
@@ -135,4 +160,4 @@
 #endif /* container_of */
 
 
-#endif /* _SNEERA_TYPES_H */
+#endif /* _HUZLIB_TYPES_H */
