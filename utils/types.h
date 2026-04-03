@@ -104,7 +104,7 @@
 #define _UNIQUE(name) __UNIQUE_CONCAT(name, __LINE__)
 
 
-#define _NUMERIC_TYPES(x, ...)         \
+#define _INT_TYPES(x, ...)             \
    x(uint8_t, __VA_ARGS__)             \
    x(uint16_t, __VA_ARGS__)            \
    x(uint32_t, __VA_ARGS__)            \
@@ -125,6 +125,8 @@
    x(long long, __VA_ARGS__)           \
    x(size_t, __VA_ARGS__)              \
    x(ptrdiff_t, __VA_ARGS__)           \
+
+#define _FLOAT_TYPES(x, ...)           \
    x(float, __VA_ARGS__)               \
    x(double, __VA_ARGS__)              \
    x(long double, __VA_ARGS__)
@@ -384,7 +386,7 @@
 #define _MIN_RAW(x, y) ((x) < (y) ? (x) : (y))
 
 #if _HAS_STATEMENT_EXPR
-   #define min(x, y) __extension__ ({                   \
+   #define min(x, y) __extension__ ({     \
       typecheck_unqual(typeof(x), y);     \
       typeof(y) _UNIQUE(_x) = (x);        \
       typeof(x) _UNIQUE(_y) = (y);        \
@@ -397,10 +399,12 @@
          return _MIN_RAW(x, y);                       \
       }
 
-   _NUMERIC_TYPES(_GENERATE_MIN)
+   _INT_TYPES(_GENERATE_MIN)
+   _FLOAT_TYPES(_GENERATE_MIN)
+
    #define min(x, y) _Generic((x),                    \
       typeof(y): _Generic((y),                        \
-         _NUMERIC_TYPES(XMACRO_GENERIC_ENTRY, min_)   \
+         _INT_TYPES(XMACRO_GENERIC_ENTRY, min_)       \
          XMACRO_GENERIC_DEFAULT(min_unsupported)      \
       ),                                              \
       default: min_unsupported                        \
@@ -426,7 +430,7 @@
 #define _MAX_RAW(x, y) ((x) > (y) ? (x) : (y))
 
 #if _HAS_STATEMENT_EXPR
-   #define max(x, y) __extension__ ({                   \
+   #define max(x, y) __extension__ ({     \
       typecheck_unqual(typeof(x), y);     \
       typeof(y) _UNIQUE(_x) = (x);        \
       typeof(x) _UNIQUE(_y) = (y);        \
@@ -439,10 +443,12 @@
          return _MAX_RAW(x, y);                       \
       }
 
-   _NUMERIC_TYPES(_GENERATE_MAX)
+   _INT_TYPES(_GENERATE_MAX)
+   _FLOAT_TYPES(_GENERATE_MAX)
+
    #define max(x, y) _Generic((x),                    \
       typeof(y): _Generic((y),                        \
-         _NUMERIC_TYPES(XMACRO_GENERIC_ENTRY, max_)   \
+         _INT_TYPES(XMACRO_GENERIC_ENTRY, max_)       \
          XMACRO_GENERIC_DEFAULT(max_unsupported)      \
       ),                                              \
       default: max_unsupported                        \
@@ -498,9 +504,9 @@
          return _ROUND_UP_RAW(x, a);                        \
       }
 
-   _NUMERIC_TYPES(_GENERATE_ROUND_UP)
+   _INT_TYPES(_GENERATE_ROUND_UP)
    #define round_up(x, align) _Generic((x),           \
-      _NUMERIC_TYPES(XMACRO_GENERIC_ENTRY, round_up_) \
+      _INT_TYPES(XMACRO_GENERIC_ENTRY, round_up_)     \
       XMACRO_GENERIC_DEFAULT(round_up_unsupported)    \
    )(x, align)
 
@@ -539,9 +545,9 @@
          return _ROUND_UP_POW2_RAW(x, a);                         \
       }
 
-   _NUMERIC_TYPES(_GENERATE_ROUND_UP_POW2)
+   _INT_TYPES(_GENERATE_ROUND_UP_POW2)
    #define round_up_pow2(x, align) _Generic((x),      \
-      _NUMERIC_TYPES(_GENERIC_ENTRY, round_up_pow2_)  \
+      _INT_TYPES(_GENERIC_ENTRY, round_up_pow2_)      \
       _GENERIC_DEFAULT(round_up_pow2_unsupported)     \
    )(x, align)
 
@@ -581,9 +587,9 @@
          return a == 0 ? x : _ROUND_DOWN_RAW(x, a);           \
       }
 
-   _NUMERIC_TYPES(_GENERATE_ROUND_DOWN)
+   _INT_TYPES(_GENERATE_ROUND_DOWN)
    #define round_down(x, align) _Generic((x),      \
-      _NUMERIC_TYPES(_GENERIC_ENTRY, round_down_)  \
+      _INT_TYPES(_GENERIC_ENTRY, round_down_)      \
       _GENERIC_DEFAULT(round_down_unsupported)     \
    )(x, align)
 
@@ -621,9 +627,9 @@
          assert((a & (a - 1)) == 0);                              \
          return _ROUND_DOWN_POW2_RAW(x, a);                       \
       }
-   _NUMERIC_TYPES(_GENERATE_ROUND_DOWN_POW2)
+   _INT_TYPES(_GENERATE_ROUND_DOWN_POW2)
    #define round_down_pow2(x, align) _Generic((x),       \
-      _NUMERIC_TYPES(_GENERIC_ENTRY, round_down_pow2_)   \
+      _INT_TYPES(_GENERIC_ENTRY, round_down_pow2_)       \
       _GENERIC_DEFAULT(round_down_pow2_unsupported)      \
    )(x, align)
 
@@ -662,9 +668,9 @@
       static inline type div_round_up_##type(type n, type d) { \
          return d == 0 ? 0 : _DIV_ROUND_UP_RAW(n, d);          \
       }
-   _NUMERIC_TYPES(_GENERATE_DIV_ROUND_UP)
+   _INT_TYPES(_GENERATE_DIV_ROUND_UP)
    #define div_round_up(n, d) _Generic((n),           \
-      _NUMERIC_TYPES(_GENERIC_ENTRY, div_round_up_)   \
+      _INT_TYPES(_GENERIC_ENTRY, div_round_up_)       \
       _GENERIC_DEFAULT(div_round_up_unsupported)      \
    )(n, d)
 
@@ -703,9 +709,9 @@
          assert((a & (a - 1)) == 0);                                 \
          return _DIV_ROUND_UP_POW2_RAW(n, d);                        \
       }
-   _NUMERIC_TYPES(_GENERATE_DIV_ROUND_UP_POW2)
+   _INT_TYPES(_GENERATE_DIV_ROUND_UP_POW2)
    #define div_round_up_pow2(n, d) _Generic((n),         \
-      _NUMERIC_TYPES(_GENERIC_ENTRY, div_round_up_pow2_) \
+      _INT_TYPES(_GENERIC_ENTRY, div_round_up_pow2_)     \
       _GENERIC_DEFAULT(div_round_up_pow2_unsupported)    \
    )(n, d)
 
