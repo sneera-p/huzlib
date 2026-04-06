@@ -156,17 +156,13 @@
  * Validates 'expr' matches 'type' exactly.
  */
 #ifndef typecheck
-#if _HAS_STATEMENT_EXPR
-   #define typecheck(type, expr) __extension__ ({  \
-      (void)((type *)0 == (typeof(expr) *)0);      \
-      1;                                           \
-   })
-#else
-   #define types_equal(typea, typeb) (             \
-      sizeof((type *)0 == (typeof(expr) *)0),      \
-      1                                            \
-   )
-#endif
+#define typecheck(type, expr) _Generic(   \
+   (expr),                                \
+   type: 1,                               \
+   const type: 1,                         \
+   volatile type: 1,                      \
+   const volatile type: 1                 \
+)
 #endif /* typecheck */
 
 

@@ -12,7 +12,6 @@
    x(uint16_t, __VA_ARGS__)   \
    x(uint32_t, __VA_ARGS__)   \
    x(uint64_t, __VA_ARGS__)
-   /* add more types here if required */
 
 #define _BIT_C23_PROTOS(type, x)       \
    x(type, trailing_zeros, type w)     \
@@ -35,10 +34,13 @@
 
 #define _UWIDTH(expr)                        (sizeof(expr) * CHAR_BIT)
 #define _UMAX(type)                          ((type)(-1))
+#define _GENERIC_FUNC(type, func)            func##_##type
 
 #define _ASSERT_UNSIGNED(type, ...)          _Static_assert((type)(-1) > 0, #type " is not unsigned");
 #define _ASSERT_SIZEOF(x, expect)            _Static_assert(sizeof(x) == (expect), #x " is not expected size")
 #define _DECLARE_PROTOTYPE(type, name, ...)  extern type bit_##name##_##type(__VA_ARGS__);
+
+
 
 
 _BIT_TYPES(_ASSERT_UNSIGNED, _)
@@ -65,11 +67,41 @@ _BIT_TYPES(_ASSERT_UNSIGNED, _)
 #else
    _BIT_TYPES(_BIT_C23_PROTOS, _DECLARE_PROTOTYPE)
 
-   #define bit_trailing_zeros(w)             _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_trailing_zeros_) XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_leading_zeros(w)              _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_leading_zeros_) XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_count_ones(w)                 _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_count_ones_) XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_first_trailing_one(w)         _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_first_trailing_one_) XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_first_leading_one(w)          _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_first_leading_one_) XMACRO_GENERIC_DEFAULT(0))(w)
+   #define bit_trailing_zeros(w)             _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_trailing_zeros),      \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_trailing_zeros),      \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_trailing_zeros),      \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_trailing_zeros)       \
+                                             )(w)
+
+   #define bit_leading_zeros(w)              _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_leading_zeros),       \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_leading_zeros),       \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_leading_zeros),       \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_leading_zeros)        \
+                                             )(w)
+
+   #define bit_count_ones(w)                 _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_count_ones),          \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_count_ones),          \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_count_ones),          \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_count_ones)           \
+                                             )(w)
+
+   #define bit_first_trailing_one(w)         _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_first_trailing_one),  \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_first_trailing_one),  \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_first_trailing_one),  \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_first_trailing_one)   \
+                                             )(w)
+
+   #define bit_first_leading_one(w)          _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_first_leading_one),   \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_first_leading_one),   \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_first_leading_one),   \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_first_leading_one)    \
+                                             )(w)
+
 
    #define bit_trailing_ones(w)              bit_trailing_zeros((typeof(w))~(w))
    #define bit_leading_ones(w)               bit_leading_zeros((typeof(w))~(w))
@@ -77,9 +109,27 @@ _BIT_TYPES(_ASSERT_UNSIGNED, _)
    #define bit_first_trailing_zero(w)        bit_first_trailing_one((typeof(w))~(w))
    #define bit_first_leading_zero(w)         bit_first_leading_one((typeof(w))~(w))
 
-   #define bit_width(w)                      _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_width_) XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_ceil(w)                       _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_ceil_)  XMACRO_GENERIC_DEFAULT(0))(w)
-   #define bit_floor(w)                      _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_floor_) XMACRO_GENERIC_DEFAULT(0))(w)
+   #define bit_width(w)                      _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_width),               \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_width),               \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_width),               \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_width)                \
+                                             )(w)
+
+   #define bit_ceil(w)                       _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_ceil),                \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_ceil),                \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_ceil),                \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_ceil)                 \
+                                             )(w)
+
+   #define bit_floor(w)                      _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_floor),               \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_floor),               \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_floor),               \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_floor)                \
+                                             )(w)
+
 
 #endif /* C23 PROTOS */
 
@@ -98,16 +148,40 @@ _BIT_TYPES(_ASSERT_UNSIGNED, _)
 #else
    _BIT_TYPES(_BIT_C2Y_PROTOS, _DECLARE_PROTOTYPE)
 
-   #define bit_rotate_left(w, rot)           _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_rotate_left_) XMACRO_GENERIC_DEFAULT(0))(w, rot)
-   #define bit_rotate_right(w, rot)          _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_rotate_right_) XMACRO_GENERIC_DEFAULT(0))(w, rot)
+   #define bit_rotate_left(w, rot)           _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_rotate_left),         \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_rotate_left),         \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_rotate_left),         \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_rotate_left)          \
+                                             )(w, rot)
+
+   #define bit_rotate_right(w, rot)          _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_rotate_right),        \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_rotate_right),        \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_rotate_right),        \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_rotate_right)         \
+                                             )(w, rot)
+
 
 #endif /* C2Y PROTOS */
 
 
 _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
 
-#define bit_rotate_left_part(w, rot, cnt)    _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_rotate_left_part_) XMACRO_GENERIC_DEFAULT(0))(w, rot, cnt)
-#define bit_rotate_right_part(w, rot, cnt)   _Generic((w), _BIT_TYPES(XMACRO_GENERIC_ENTRY, bit_rotate_right_part_) XMACRO_GENERIC_DEFAULT(0))(w, rot, cnt)
+#define bit_rotate_left_part(w, rot, cnt)    _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_rotate_left_part),    \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_rotate_left_part),    \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_rotate_left_part),    \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_rotate_left_part)     \
+                                             )(w, rot, cnt)
+
+#define bit_rotate_right_part(w, rot, cnt)   _Generic((w),                                                  \
+                                                uint8_t:  _GENERIC_FUNC(uint8_t,  bit_rotate_right_part),   \
+                                                uint16_t: _GENERIC_FUNC(uint16_t, bit_rotate_right_part),   \
+                                                uint32_t: _GENERIC_FUNC(uint32_t, bit_rotate_right_part),   \
+                                                uint64_t: _GENERIC_FUNC(uint64_t, bit_rotate_right_part)    \
+                                             )(w, rot, cnt)
+
 
 
 
@@ -160,55 +234,10 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
 #if (__STDC_VERSION__ <= 201710L)
 
 
-#define _CTZ_128(ret, w) do {                                                    \
-   uint64_t _UNIQUE(_low) = (uint64_t)(w);                                       \
-   if (_UNIQUE(_low) != 0)                                                       \
-      *(ret) = bit_trailing_zeros(_UNIQUE(_low));                                \
-   else                                                                          \
-      *(ret) = 64 + bit_trailing_zeros((uint64_t)((w) >> 64));                   \
-} while (0)
-
-#define _CTZ_256(ret, w) do {                                                    \
-   _ASSERT_SIZEOF(w, 8);                                                         \
-   _ASSERT_SIZEOF(*(ret), 32);                                                   \
-   for (int _UNIQUE(_i) = 0; _UNIQUE(_i) < 4; _UNIQUE(_i)++) {                   \
-      uint64_t _UNIQUE(_part) = (uint64_t)((w) >> (_UNIQUE(_i) * 64));           \
-      if (_UNIQUE(_part) != 0) {                                                 \
-         *(ret) = (_UNIQUE(_i) * 64) + bit_trailing_zeros(_UNIQUE(_part));       \
-         break;                                                                  \
-      }                                                                          \
-   }                                                                             \
-} while(0)
-
-#define _CLZ_128(ret, w) do {                                                    \
-   uint64_t _UNIQUE(_high) = (uint64_t)((w) >> 64);                              \
-   if (_UNIQUE(_high) != 0)                                                      \
-      *(ret) = bit_leading_zeros(_UNIQUE(_high));                                \
-   else                                                                          \
-      *(ret) = 64 + bit_leading_zeros((uint64_t)w);                              \
-} while(0)
-
-#define _CLZ_256(ret, w) do {                                                    \
-   for (int _UNIQUE(_i) = 3; _UNIQUE(_i) >= 0; _UNIQUE(_i)--) {                  \
-      uint64_t _UNIQUE(_part) = (uint64_t)((w) >> (_UNIQUE(_i) * 64));           \
-      if (_UNIQUE(_part) != 0) {                                                 \
-         *(ret) = ((3 - _UNIQUE(_i)) * 64) + bit_leading_zeros(_UNIQUE(_part));  \
-         break;                                                                  \
-      }                                                                          \
-   }                                                                             \
-} while(0)
-
-#define _POPC_128(ret, w) do {                                                   \
-   *(ret) = bit_count_ones((uint64_t)(w))                                        \
-      + bit_count_ones((uint64_t)((w) >> 64));                                   \
-} while(0)
-
-#define _POPC_256(ret, w) do {                                                   \
-   *(ret) = 0;                                                                   \
-   for (int _UNIQUE(_i) = 3; _UNIQUE(_i) >= 0; _UNIQUE(_i)--)                    \
-      *(ret) += bit_count_ones((uint64_t)((w) >> (_UNIQUE(_i) * 64)));           \
+static inline unsigned int __bit_operation_not_found() {
+   assert(0);
+   return 0;
 }
-
 
 /*
  * default software emulation
@@ -269,23 +298,7 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
          return table[((w & -w) * 0x03F79D71B4CB0A89ULL) >> 58];              \
       }                                                                       \
                                                                               \
-      if (sizeof(type) == 16)                                                 \
-      {                                                                       \
-         /* 128-bit - fallback to 64-bit halves */                            \
-         type ret;                                                            \
-         _CTZ_128(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      if (sizeof(type) == 32)                                                 \
-      {                                                                       \
-         /* 256-bit - fallback to 64-bit quarters */                          \
-         type ret;                                                            \
-         _CTZ_256(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      assert(0);                                                              \
+      return (type)__bit_operation_not_found();                               \
    }
 
    #define _GENERATE_LEADING_ZEROS_DEFAULT(type)                              \
@@ -299,9 +312,11 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
          static const unsigned char table[8] = {                              \
             7, 6, 5, 5, 4, 4, 4, 4                                            \
          };                                                                   \
+                                                                              \
          w |= w >> 1;                                                         \
          w |= w >> 2;                                                         \
          w |= w >> 4;                                                         \
+                                                                              \
          return table[(w * 0x1D) >> 5];                                       \
       }                                                                       \
                                                                               \
@@ -311,10 +326,12 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
             15, 14, 13, 12, 11, 10, 9, 8,                                     \
             7, 6, 5, 5, 4, 4, 4, 4                                            \
          };                                                                   \
+                                                                              \
          w |= w >> 1;                                                         \
          w |= w >> 2;                                                         \
          w |= w >> 4;                                                         \
          w |= w >> 8;                                                         \
+                                                                              \
          return table[(w * 0x4AF) >> 12];                                     \
       }                                                                       \
                                                                               \
@@ -324,11 +341,13 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
             31, 22, 30, 21, 18, 10, 29, 2, 20, 17, 15, 13, 9, 6, 28, 1,       \
             23, 19, 11, 3, 16, 14, 7, 24, 12, 4, 8, 25, 5, 26, 27, 0          \
          };                                                                   \
+                                                                              \
          w |= w >> 1;                                                         \
          w |= w >> 2;                                                         \
          w |= w >> 4;                                                         \
          w |= w >> 8;                                                         \
          w |= w >> 16;                                                        \
+                                                                              \
          return table[(w * 0x07C4ACDDU) >> 27];                               \
       }                                                                       \
                                                                               \
@@ -340,32 +359,18 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
             57, 44, 34, 32, 25, 20, 19, 18, 42, 17, 16, 15, 14, 13, 12, 11,   \
             58, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 62, 61, 60, 59              \
          };                                                                   \
+                                                                              \
          w |= w >> 1;                                                         \
          w |= w >> 2;                                                         \
          w |= w >> 4;                                                         \
          w |= w >> 8;                                                         \
          w |= w >> 16;                                                        \
          w |= w >> 32;                                                        \
+                                                                              \
          return table[(w * 0x03F566ED27179461ULL) >> 58];                     \
       }                                                                       \
                                                                               \
-      if (sizeof(type) == 16)                                                 \
-      {                                                                       \
-         /* 128-bit - fallback to 64-bit halves */                            \
-         type ret;                                                            \
-         _CLZ_128(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      if (sizeof(type) == 32)                                                 \
-      {                                                                       \
-         /* 256-bit - fallback to 64-bit quarters */                          \
-         type ret;                                                            \
-         _CLZ_256(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      assert(0);                                                              \
+      return (type)__bit_operation_not_found();                               \
    }
 
 #elif defined(BIT_DEFAULT_FALLBACK_LOW_MEMORY)
@@ -424,23 +429,7 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
          return n;                                                            \
       }                                                                       \
                                                                               \
-      if (sizeof(type) == 16)                                                 \
-      {                                                                       \
-         /* 128-bit - fallback to 64-bit halves */                            \
-         type ret;                                                            \
-         _CTZ_128(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      if (sizeof(type) == 32)                                                 \
-      {                                                                       \
-         /* 256-bit - fallback to 64-bit quarters */                          \
-         type ret;                                                            \
-         _CTZ_256(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      assert(0);                                                              \
+      return (type)__bit_operation_not_found();                               \
    }
 
    #define _GENERATE_LEADING_ZEROS_DEFAULT(type)                              \
@@ -491,23 +480,7 @@ _BIT_TYPES(_BIT_LIB_PROTOS, _DECLARE_PROTOTYPE)
          return n;                                                            \
       }                                                                       \
                                                                               \
-      if (sizeof(type) == 16)                                                 \
-      {                                                                       \
-         /* 128-bit - fallback to 64-bit halves */                            \
-         type ret;                                                            \
-         _CLZ_128(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      if (sizeof(type) == 32)                                                 \
-      {                                                                       \
-         /* 256-bit - fallback to 64-bit quarters */                          \
-         type ret;                                                            \
-         _CLZ_256(&ret, w);                                                   \
-         return ret;                                                          \
-      }                                                                       \
-                                                                              \
-      assert(0);                                                              \
+      return (type)__bit_operation_not_found();                               \
    }
 
 #endif
@@ -557,23 +530,7 @@ inline type bit_count_ones_##type(type w)                                     \
       return (type)(w & 0x7F);                                                \
    }                                                                          \
                                                                               \
-   if (sizeof(type) == 16)                                                    \
-   {                                                                          \
-      /* 128-bit - fallback to 64-bit halves */                               \
-      type ret;                                                               \
-      _POPC_128(&ret, w);                                                     \
-      return ret;                                                             \
-   }                                                                          \
-                                                                              \
-   if (sizeof(type) == 32)                                                    \
-   {                                                                          \
-      /* 256-bit - fallback to 64-bit quarters */                             \
-      type ret;                                                               \
-      _POPC_256(&ret, w);                                                     \
-      return ret;                                                             \
-   }                                                                          \
-                                                                              \
-   assert(0);                                                                 \
+   return (type)__bit_operation_not_found();                                  \
 }
 
 #define _GENERATE_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)                       \
@@ -605,9 +562,8 @@ inline type bit_first_leading_one_##type(type w)                              \
    #include <cuda_runtime.h>
 
    #define _GENERATE_TRAILING_ZEROS(type, ...)        \
-   inline type bit_trailing_zeros(type w)             \
+   inline type bit_trailing_zeros_##type(type w)      \
    {                                                  \
-      type ret;                                       \
       if (w == 0)                                     \
          return _UWIDTH(type);                        \
                                                       \
@@ -615,134 +571,54 @@ inline type bit_first_leading_one_##type(type w)                              \
       {                                               \
          case 1:                                      \
          case 2:                                      \
-         case 4:                                      \
-            ret = __ffs((uint32_t)w) - 1;             \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __ffsll(w) - 1;                     \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CTZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CTZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 4:  return __ffs((uint32_t)w) - 1;      \
+         case 8:  return __ffsll((uint64_t)w) - 1;    \
       }                                               \
-      return ret;                                     \
+                                                      \
+      return (type)__bit_operation_not_found();       \
    }
 
-#define _GENERATE_LEADING_ZEROS(type, ...)            \
+   #define _GENERATE_LEADING_ZEROS(type, ...)         \
    inline type bit_leading_zeros_##type(type w)       \
    {                                                  \
-      type ret;                                       \
       if (w == 0)                                     \
          return _UWIDTH(type);                        \
                                                       \
       switch (sizeof(type))                           \
       {                                               \
-         case 1:                                      \
-            ret = __clz((uint32_t)w) - 24;            \
-            break;                                    \
-                                                      \
-         case 2:                                      \
-            ret = __clz((uint32_t)w) - 16;            \
-            break;                                    \
-                                                      \
-         case 4:                                      \
-            ret = __clz((uint32_t)w);                 \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __clzll(w);                         \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CLZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CLZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 1:  return __clz((uint32_t)w) - 24;     \
+         case 2:  return __clz((uint32_t)w) - 16;     \
+         case 4:  return __clz((uint32_t)w);          \
+         case 8:  return __clzll((uint64_t)w);        \
       }                                               \
-      return ret;                                     \
+                                                      \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_COUNT_ONES(type, ...)            \
    inline type bit_count_ones_##type(type w)          \
    {                                                  \
-      type ret;                                       \
       switch (sizeof(type))                           \
       {                                               \
          case 1:                                      \
          case 2:                                      \
-         case 4:                                      \
-            ret = __popc((uint32_t)w);                \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __popcll(w);                        \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _POPC_128(&ret, w);                       \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _POPC_256(&ret, w);                       \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 4:  return __popc((uint32_t)w);         \
+         case 8:  return __popcll((uint64_t)w);       \
       }                                               \
-      return ret;                                     \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_FIRST_TRAILING_ONE(type, ...)    \
-   inline type bit_first_trailing_one(type w)         \
+   inline type bit_first_trailing_one_##type(type w)  \
    {                                                  \
-      if (w == 0)                                     \
-         return 0;                                    \
-                                                      \
-      type ret;                                       \
       switch (sizeof(type))                           \
       {                                               \
          case 1:                                      \
          case 2:                                      \
-         case 4:                                      \
-            ret = __ffs((uint32_t)w);                 \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __ffsll(w);                         \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CTZ_128(&ret, w);                        \
-            ret++;                                    \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CTZ_256(&ret, w);                        \
-            ret++;                                    \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 4:  return __ffs((uint32_t)w);          \
+         case 8:  return __ffsll((uint64_t)w);        \
       }                                               \
-      return ret;                                     \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_FIRST_LEADING_ONE(type, ...)  _GENERATE_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
@@ -757,146 +633,48 @@ inline type bit_first_leading_one_##type(type w)                              \
  */
 #elif defined(__INTEL_LLVM_COMPILER) || (defined(__INTEL_COMPILER) && defined(__GNUC__)) || (defined(__ARMCOMPILER_VERSION) && __ARMCOMPILER_VERSION >= 600000) || (defined(__ibmxl__) && __ibmxl__ >= 0x10010000) || (defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4))) || defined(__clang__)
 
-   #define _GENERATE_TRAILING_ZEROS(type, ...)        \
-   inline type bit_trailing_zeros(type w)             \
-   {                                                  \
-      type ret;                                       \
-      switch (sizeof(type))                           \
-      {                                               \
-         case sizeof(unsigned char):                  \
-         case sizeof(unsigned short):                 \
-         case sizeof(unsigned int):                   \
-            ret = __builtin_ctz((unsigned int)w);     \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long):                  \
-            ret = __builtin_ctzl(w);                  \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long long):             \
-            ret = __builtin_ctzll(w);                 \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CTZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CTZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_TRAILING_ZEROS(type, ...)                                                              \
+   inline type bit_trailing_zeros_##type(type w)                                                            \
+   {                                                                                                        \
+      if (w == 0)                                                                                           \
+         return _UWIDTH(type);                                                                              \
+                                                                                                            \
+      if (sizeof(type) <= sizeof(unsigned int))       return __builtin_ctz((unsigned int)w);                \
+      if (sizeof(type) == sizeof(unsigned long))      return __builtin_ctzl((unsigned long)w);              \
+      if (sizeof(type) == sizeof(unsigned long long)) return __builtin_ctzll((unsigned long long)w);        \
+      else                                            return (type)__bit_operation_not_found();             \
    }
 
-   #define _GENERATE_LEADING_ZEROS(type, ...)         \
-   inline type bit_leading_zeros_##type(type w)       \
-   {                                                  \
-      type ret;                                       \
-      switch (sizeof(type))                           \
-      {                                               \
-         case sizeof(unsigned char):                  \
-         case sizeof(unsigned short):                 \
-         case sizeof(unsigned int):                   \
-            ret = __builtin_clz((unsigned int)w);     \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long):                  \
-            ret = __builtin_clzl(w);                  \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long long):             \
-            ret = __builtin_clzll(w);                 \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CLZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CLZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_LEADING_ZEROS(type, ...)                                                               \
+   inline type bit_leading_zeros_##type(type w)                                                             \
+   {                                                                                                        \
+      if (w == 0)                                                                                           \
+         return _UWIDTH(type);                                                                              \
+                                                                                                            \
+      if (sizeof(type) == sizeof(unsigned char))      return __builtin_clz((unsigned int)w) - 24;           \
+      if (sizeof(type) == sizeof(unsigned short))     return __builtin_clz((unsigned int)w) - 16;           \
+      if (sizeof(type) == sizeof(unsigned int))       return __builtin_clz((unsigned int)w);                \
+      if (sizeof(type) == sizeof(unsigned long))      return __builtin_clzl((unsigned long)w);              \
+      if (sizeof(type) == sizeof(unsigned long long)) return __builtin_clzll((unsigned long long)w);        \
+      else                                            return (type)__bit_operation_not_found();             \
    }
 
-   #define _GENERATE_COUNT_ONES(type, ...)            \
-   inline type bit_count_ones_##type(type w)          \
-   {                                                  \
-      type ret;                                       \
-      switch (sizeof(type))                           \
-      {                                               \
-         case sizeof(unsigned char):                  \
-         case sizeof(unsigned short):                 \
-         case sizeof(unsigned int):                   \
-            ret = __builtin_popcount((unsigned int)w);\
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long):                  \
-            ret = __builtin_popcountl(w);             \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long long):             \
-            ret = __builtin_popcountll(w);            \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _POPC_128(&ret, w);                       \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _POPC_256(&ret, w);                       \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_COUNT_ONES(type, ...)                                                                  \
+   inline type bit_count_ones_##type(type w)                                                                \
+   {                                                                                                        \
+      if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
+      if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
+      if (sizeof(type) == sizeof(unsigned long long)) return __builtin_popcountll((unsigned long long)w);   \
+      else                                            return (type)__bit_operation_not_found();             \
    }
 
-   #define _GENERATE_FIRST_TRAILING_ONE(type, ...)    \
-   inline type bit_first_trailing_one(type w)         \
-   {                                                  \
-      type ret;                                       \
-      switch (sizeof(type))                           \
-      {                                               \
-         case sizeof(unsigned char):                  \
-         case sizeof(unsigned short):                 \
-         case sizeof(unsigned int):                   \
-            ret = __builtin_ffs((unsigned int)w);     \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long):                  \
-            ret = __builtin_ffsl(w);                  \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long long):             \
-            ret = __builtin_ffsll(w);                 \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CTZ_128(&ret, w);                        \
-            ret++;                                    \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CTZ_256(&ret, w);                        \
-            ret++;                                    \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_FIRST_TRAILING_ONE(type, ...)                                                          \
+   inline type bit_first_trailing_one_##type(type w)                                                        \
+   {                                                                                                        \
+      if (sizeof(type) <= sizeof(unsigned int))       return __builtin_ffs((unsigned int)w);                \
+      if (sizeof(type) == sizeof(unsigned long))      return __builtin_ffsl((unsigned long)w);              \
+      if (sizeof(type) == sizeof(unsigned long long)) return __builtin_ffsll((unsigned long long)w);        \
+      else                                            return (type)__bit_operation_not_found();             \
    }
 
    #define _GENERATE_FIRST_LEADING_ONE(type, ...)  _GENERATE_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
@@ -912,9 +690,8 @@ inline type bit_first_leading_one_##type(type w)                              \
    #include <builtins.h>
 
    #define _GENERATE_TRAILING_ZEROS(type, ...)        \
-   inline type bit_trailing_zeros(type w)             \
+   inline type bit_trailing_zeros_##type(type w)      \
    {                                                  \
-      type ret;                                       \
       if (w == 0)                                     \
          return _UWIDTH(type);                        \
                                                       \
@@ -922,98 +699,41 @@ inline type bit_first_leading_one_##type(type w)                              \
       {                                               \
          case 1:                                      \
          case 2:                                      \
-         case 4:                                      \
-            ret = __cnttz4((uint32_t)w);              \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __cnttz8(w);                        \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CTZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CTZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 4:  return __cnttz4((uint32_t)w);       \
+         case 8:  return __cnttz8((uint64_t)w);       \
       }                                               \
-      return ret;                                     \
+                                                      \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_LEADING_ZEROS(type, ...)         \
    inline type bit_leading_zeros_##type(type w)       \
    {                                                  \
-      type ret;                                       \
       if (w == 0)                                     \
          return _UWIDTH(type);                        \
                                                       \
       switch (sizeof(type))                           \
       {                                               \
-         case 1:                                      \
-            ret = __cntlz4((uint32_t)w) - 24;         \
-            break;                                    \
-                                                      \
-         case 2:                                      \
-            ret = __cntlz4((uint32_t)w) - 16;         \
-            break;                                    \
-                                                      \
-         case 4:                                      \
-            ret = __cntlz4((uint32_t)w);              \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __cntlz8(w);                        \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _CLZ_128(&ret, w);                        \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _CLZ_256(&ret, w);                        \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 1:  return __cntlz4((uint32_t)w) - 24;  \
+         case 2:  return __cntlz4((uint32_t)w) - 16;  \
+         case 4:  return __cntlz4((uint32_t)w);       \
+         case 8:  return __cntlz8((uint64_t)w);       \
       }                                               \
-      return ret;                                     \
+                                                      \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_COUNT_ONES(type, ...)            \
    inline type bit_count_ones_##type(type w)          \
    {                                                  \
-      type ret;                                       \
       switch (sizeof(type))                           \
       {                                               \
          case 1:                                      \
          case 2:                                      \
-         case 4:                                      \
-            ret = __popcnt4((uint32_t)w);             \
-            break;                                    \
-                                                      \
-         case 8:                                      \
-            ret = __popcnt8(w);                       \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _POPC_128(&ret, w);                       \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _POPC_256(&ret, w);                       \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
+         case 4:  return __popcnt4((uint32_t)w);      \
+         case 8:  return __popcnt8((uint64_t)w);      \
       }                                               \
-      return ret;                                     \
+      return (type)__bit_operation_not_found();       \
    }
 
    #define _GENERATE_FIRST_TRAILING_ONE(type, ...) _GENERATE_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)
@@ -1038,18 +758,18 @@ inline type bit_first_leading_one_##type(type w)                              \
 
    #if defined(__AVX2__) || defined(__BMI__) || defined(__LZCNT__) || defined(__POPCNT__)
 
-      #define _CTZ_16(ret, w)       do { *(ret) = __tzcnt16(w); } while(0)
-      #define _CTZ_32(ret, w)       do { *(ret) = __tzcnt(w); } while(0)
-      #define _CLZ_16(ret, w)       do { *(ret) = __lzcnt16(w); } while(0)
-      #define _CLZ_32(ret, w)       do { *(ret) = __lzcnt(w); } while(0)
-      #define _POPC_16(ret, w)      do { *(ret) = __popcnt16(w); } while(0)
-      #define _POPC_32(ret, w)      do { *(ret) = __popcnt(w); } while(0)
-      #define _MVSC_HAS_POPC 1
+      #define _CTZ_16(ret, w)       do { *(ret) = __tzcnt16((uint16_t)w);  } while(0)
+      #define _CTZ_32(ret, w)       do { *(ret) = __tzcnt((uint32_t)w);    } while(0)
+      #define _CLZ_16(ret, w)       do { *(ret) = __lzcnt16((uint16_t)w);  } while(0)
+      #define _CLZ_32(ret, w)       do { *(ret) = __lzcnt((uint32_t)w);    } while(0)
+      #define _POPC_16(ret, w)      do { *(ret) = __popcnt16((uint16_t)w); } while(0)
+      #define _POPC_32(ret, w)      do { *(ret) = __popcnt((uint32_t)w);   } while(0)
 
       #if defined(_M_X64)
-         #define _CTZ_64(ret, w)    do { *(ret) = __tzcnt64(w); } while(0)
-         #define _CLZ_64(ret, w)    do { *(ret) = __lzcnt64(w); } while(0)
-         #define _POPC_64(ret, w)   do { *(ret) = __popcnt64(w); } while(0)
+         #define _CTZ_64(ret, w)    do { *(ret) = __tzcnt64((uint64_t)w);  } while(0)
+         #define _CLZ_64(ret, w)    do { *(ret) = __lzcnt64((uint64_t)w);  } while(0)
+         #define _POPC_64(ret, w)   do { *(ret) = __popcnt64((uint64_t)w); } while(0)
+
       #else
          #define _CTZ_64(ret, w)    do {                       \
             uint32_t _UNIQUE(_low) = (uint32_t)(w);            \
@@ -1065,33 +785,37 @@ inline type bit_first_leading_one_##type(type w)                              \
                *(ret) = __lzcnt(_UNIQUE(_high));               \
             else                                               \
                *(ret) = 32 + __lzcnt((uint32_t)(w));           \
-         } while(0);
+         } while(0)
 
          #define _POPC_64(ret, w)   do {                       \
             *(ret) = __popcnt((uint32_t)(w))                   \
                + __popcnt((uint32_t)((w) >> 32));              \
          } while(0)
+
       #endif
+      #define _MVSC_HAS_POPC 1
  
    #else
 
-      #define _CTZ_16(ret, w)       do { _BitScanForward(ret, w); } while(0)
-      #define _CTZ_32(ret, w)       do { _BitScanForward(ret, w); } while(0)
-      #define _CLZ_16(ret, w)       do { _BitScanReverse(ret, w); *(ret) -= 16; } while(0)
-      #define _CLZ_32(ret, w)       do { _BitScanReverse(ret, w); } while(0)
+      #define _CTZ_16(ret, w)       do { _BitScanForward(ret, (uint16_t)w);               } while(0)
+      #define _CTZ_32(ret, w)       do { _BitScanForward(ret, (uint32_t)w);               } while(0)
+      #define _CLZ_16(ret, w)       do { _BitScanReverse(ret, (uint16_t)w); *(ret) -= 16; } while(0)
+      #define _CLZ_32(ret, w)       do { _BitScanReverse(ret, (uint32_t)w);               } while(0)
 
       #if defined(_M_ARM) || defined(_M_ARM64)
-         #define _POPC_16(ret, w)   do { *(ret) = _CountOneBits(w); } while(0)
-         #define _POPC_32(ret, w)   do { *(ret) = _CountOneBits(w); } while(0)
+         #define _POPC_16(ret, w)   do { *(ret) = _CountOneBits((uint16_t)w);       } while(0)
+         #define _POPC_32(ret, w)   do { *(ret) = _CountOneBits((uint32_t)w);       } while(0)
          #define _MVSC_HAS_POPC 1
       #endif
 
       #if defined(_M_X64) || defined(_M_ARM64)
-         #define _CTZ_64(ret, w)    do { _BitScanForward64(ret, w); } while(0)
-         #define _CLZ_64(ret, w)    do { _BitScanReverse64(ret, w); } while(0)
+         #define _CTZ_64(ret, w)    do { _BitScanForward64(ret, (uint64_t)w);       } while(0)
+         #define _CLZ_64(ret, w)    do { _BitScanReverse64(ret, (uint64_t)w);       } while(0)
+
          #ifdef _M_ARM64
-         #define _POPC_64(ret, w)   do { *(ret) = _CountOneBits64(w); } while(0)
+            #define _POPC_64(ret, w) do { *(ret) = _CountOneBits64((uint64_t)w);    } while(0)
          #endif
+
       #else
          #define _CTZ_64(ret, w)    do {                       \
             uint32_t _UNIQUE(_low) = (uint32_t)(w);            \
@@ -1119,12 +843,13 @@ inline type bit_first_leading_one_##type(type w)                              \
                   + _CountOneBits((uint32_t)((w) >> 32));      \
             } while(0)
          #endif
+
       #endif
 
    #endif /* fast intrinsics (only modern x86) */
 
    #define _GENERATE_TRAILING_ZEROS(type, ...)        \
-   inline type bit_trailing_zeros(type w)             \
+   inline type bit_trailing_zeros_##type(type w)      \
    {                                                  \
       type ret;                                       \
       if (w == 0)                                     \
@@ -1136,32 +861,27 @@ inline type bit_first_leading_one_##type(type w)                              \
          case 2:     _CTZ_16(&ret, w);    break;      \
          case 4:     _CTZ_32(&ret, w);    break;      \
          case 8:     _CTZ_64(&ret, w);    break;      \
-         case 16:    _CTZ_128(&ret, w);   break;      \
-         case 32:    _CTZ_256(&ret, w);   break;      \
          default:    assert(0);           break;      \
       }                                               \
       return ret;                                     \
    }
 
-   #define _GENERATE_LEADING_ZEROS(type, ...)         \
-   inline type bit_leading_zeros_##type(type w)       \
-   {                                                  \
-      type ret;                                       \
-      if (w == 0)                                     \
-         return _UWIDTH(type);                        \
-                                                      \
-      switch (sizeof(type))                           \
-      {                                               \
-         case 1:     _CLZ_16(&ret, w);                \
-                     ret -= 8;            break;      \
-         case 2:     _CLZ_16(&ret, w);    break;      \
-         case 4:     _CLZ_32(&ret, w);    break;      \
-         case 8:     _CLZ_64(&ret, w);    break;      \
-         case 16:    _CLZ_128(&ret, w);   break;      \
-         case 32:    _CLZ_256(&ret, w);   break;      \
-         default:    assert(0);           break;      \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_LEADING_ZEROS(type, ...)                  \
+   inline type bit_leading_zeros_##type(type w)                \
+   {                                                           \
+      type ret;                                                \
+      if (w == 0)                                              \
+         return _UWIDTH(type);                                 \
+                                                               \
+      switch (sizeof(type))                                    \
+      {                                                        \
+         case 1:     _CLZ_16(&ret, w);    ret -= 8;   break;   \
+         case 2:     _CLZ_16(&ret, w);                break;   \
+         case 4:     _CLZ_32(&ret, w);                break;   \
+         case 8:     _CLZ_64(&ret, w);                break;   \
+         default:    assert(0);                       break;   \
+      }                                                        \
+      return ret;                                              \
    }
 
    #ifdef _MVSC_HAS_POPC
@@ -1175,8 +895,6 @@ inline type bit_first_leading_one_##type(type w)                              \
             case 2:  _POPC_16(&ret, w);   break;      \
             case 4:  _POPC_32(&ret, w);   break;      \
             case 8:  _POPC_64(&ret, w);   break;      \
-            case 16: _POPC_128(&ret, w);  break;      \
-            case 32: _POPC_256(&ret, w);  break;      \
             default: assert(0);           break;      \
          }                                            \
          return ret;                                  \
@@ -1211,39 +929,13 @@ inline type bit_first_leading_one_##type(type w)                              \
    #define _GENERATE_FIRST_TRAILING_ONE(type, ...) _GENERATE_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)
    #define _GENERATE_FIRST_LEADING_ONE(type, ...)  _GENERATE_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
 
-   #define _GENERATE_COUNT_ONES(type, ...)            \
-   inline type bit_count_ones_##type(type w)          \
-   {                                                  \
-      type ret;                                       \
-      switch (sizeof(type))                           \
-      {                                               \
-         case sizeof(unsigned char):                  \
-         case sizeof(unsigned short):                 \
-         case sizeof(unsigned int):                   \
-            ret = __builtin_popcount((unsigned int)w);\
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long):                  \
-            ret = __builtin_popcountl(w);             \
-            break;                                    \
-                                                      \
-         case sizeof(unsigned long long):             \
-            ret = __builtin_popcountll(w);            \
-            break;                                    \
-                                                      \
-         case 16:                                     \
-            _POPC_128(&ret, w);                       \
-            break;                                    \
-                                                      \
-         case 32:                                     \
-            _POPC_256(&ret, w);                       \
-            break;                                    \
-                                                      \
-         default:                                     \
-            assert(0);                                \
-            break;                                    \
-      }                                               \
-      return ret;                                     \
+   #define _GENERATE_COUNT_ONES(type, ...)                                                                  \
+   inline type bit_count_ones_##type(type w)                                                                \
+   {                                                                                                        \
+      if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
+      if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
+      if (sizeof(type) == sizeof(unsigned long long)) return __builtin_popcountll((unsigned long long)w);   \
+      else                                            return (type)__bit_operation_not_found();             \
    }
 
 
