@@ -1,5 +1,5 @@
-#ifndef _HUZLIB_PREFETCH_H
-#define _HUZLIB_PREFETCH_H
+#ifndef HUZLIB_PREFETCH_H
+#define HUZLIB_PREFETCH_H
 
 
 /*
@@ -50,4 +50,4 @@
 #endif /* prefetch_read */
 
 
-#endif /* _HUZLIB_PREFETCH_H */
+#endif /* HUZLIB_PREFETCH_H */

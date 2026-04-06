@@ -1,11 +1,10 @@
-#ifndef _SNEERA_LIST_H
-#define _SNEERA_LIST_H
+#ifndef HUZLIB_LIST_H
+#define HUZLIB_LIST_H
 
 #include <assert.h>
 #include <stdbool.h>
 #include "types.h"
 #include "prefetch.h"
-#include "swap.h"
 
 
 struct list_node
@@ -35,8 +34,8 @@ extern bool list_is_last(const struct list_node *head, const struct list_node *e
 
 
 /* --- mutate operations --- */
-extern void list_add_after(struct list_node *entry, struct list_node *new);
-extern void list_add_before(struct list_node *entry, struct list_node *new);
+extern void list_add_after(struct list_node *node, struct list_node *new);
+extern void list_add_before(struct list_node *node, struct list_node *new);
 extern void list_del(struct list_node *entry);
 extern void list_del_init(struct list_node *entry);
 extern void list_replace(struct list_node *entry, struct list_node *new);
@@ -45,8 +44,8 @@ extern void list_replace_init(struct list_node *entry, struct list_node *new);
 
 /* --- inplace rearrange operations --- */
 extern void list_swap(struct list_node *a, struct list_node *b);
-extern void list_mov_after(struct list_node *entry, struct list_node *dest);
-extern void list_mov_before(struct list_node *entry, struct list_node *dest);
+extern void list_mov_after(struct list_node *node, struct list_node *dest);
+extern void list_mov_before(struct list_node *node, struct list_node *dest);
 extern void list_rotate_after(struct list_node *head);
 extern void list_rotate_before(struct list_node *head);
 extern void list_reverse(struct list_node *head);
@@ -54,34 +53,34 @@ extern void list_sort(struct list_node *head, int (*cmp)(struct list_node *, str
 
 
 /* --- chain operations --- */
-extern void list_splice_after(struct list_node *entry, struct list_node *src);
-extern void list_splice_after_init(struct list_node *entry, struct list_node *src);
-extern void list_splice_before(struct list_node *entry, struct list_node *src);
-extern void list_splice_before_init(struct list_node *entry, struct list_node *src);
-extern void list_cut_after(struct list_node *head, struct list_node *entry, struct list_node *dest);
-extern void list_cut_before(struct list_node *head, struct list_node *entry, struct list_node *dest);
+extern void list_splice_after(struct list_node *node, struct list_node *src);
+extern void list_splice_after_init(struct list_node *node, struct list_node *src);
+extern void list_splice_before(struct list_node *node, struct list_node *src);
+extern void list_splice_before_init(struct list_node *node, struct list_node *src);
+extern void list_cut_after(struct list_node *node, struct list_node *entry, struct list_node *dest);
+extern void list_cut_before(struct list_node *node, struct list_node *entry, struct list_node *dest);
 
 
 /* --- list traversal --- */
 #define list_foreach(pos, head) for (           \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head),  \
+   typecheck(struct list_node *, pos),          \
+   typecheck(struct list_node *, head),         \
    (pos) = (head)->next;                        \
    (pos) != (head);                             \
    (pos) = (pos)->next                          \
 )
 
 #define list_foreach_rev(pos, head) for (       \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head),  \
+   typecheck(struct list_node *, pos),          \
+   typecheck(struct list_node *, head),         \
    (pos) = (head)->prev;                        \
    (pos) != (head);                             \
    (pos) = (pos)->prev                          \
 )
 
 #define list_foreach_prefetch(pos, head) for (  \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head),  \
+   typecheck(struct list_node *, pos),          \
+   typecheck(struct list_node *, head),         \
    (pos) = (head)->next;                        \
    (pos) != (head);                             \
    (pos) = (pos)->next,                         \
@@ -89,8 +88,8 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_prefetch2(pos, head) for ( \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head),  \
+   typecheck(struct list_node *, pos),   \
+   typecheck(struct list_node *, head),  \
    (pos) = (head)->next;                        \
    (pos) != (head);                             \
    (pos) = (pos)->next,                         \
@@ -101,9 +100,9 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_safe(pos, tmp, head) for ( \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, tmp),   \
-   typecheck_unqual(struct list_node *, head),  \
+   typecheck(struct list_node *, pos),   \
+   typecheck(struct list_node *, tmp),   \
+   typecheck(struct list_node *, head),  \
    (pos) = (head)->next,                        \
    (tmp) = (pos)->next;                         \
    (pos) != (head);                             \
@@ -112,9 +111,9 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_safe_rev(pos, tmp, head) for (   \
-   typecheck_unqual(struct list_node *, pos),         \
-   typecheck_unqual(struct list_node *, tmp),         \
-   typecheck_unqual(struct list_node *, head),        \
+   typecheck(struct list_node *, pos),         \
+   typecheck(struct list_node *, tmp),         \
+   typecheck(struct list_node *, head),        \
    (pos) = (head)->prev,                              \
    (tmp) = (pos)->prev;                               \
    (pos) != (head);                                   \
@@ -123,15 +122,15 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_from(pos, head) for (      \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head);  \
+   typecheck(struct list_node *, pos),   \
+   typecheck(struct list_node *, head);  \
    (pos) != (head);                             \
    (pos) = (pos)->next                          \
 )
 
 #define list_foreach_rev_from(pos, head) for (  \
-   typecheck_unqual(struct list_node *, pos),   \
-   typecheck_unqual(struct list_node *, head);  \
+   typecheck(struct list_node *, pos),   \
+   typecheck(struct list_node *, head);  \
    (pos) != (head);                             \
    (pos) = (pos)->prev                          \
 )
@@ -145,25 +144,25 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 #define list_prev_entry(entr, type, member)  container_of((entr)->member.prev, type, member)
 
 #define list_foreach_entry(entr, head, type, member) for (  \
-   typecheck_unqual(type *, entr),                          \
-   typecheck_unqual(struct list_node *, head),              \
+   typecheck(type *, entr),                          \
+   typecheck(struct list_node *, head),              \
    (entr) = list_first_entry(head, type, member);           \
    &(entr)->member != (head);                               \
    (entr) = list_next_entry(entr, type, member)             \
 )
 
 #define list_foreach_entry_rev(entr, head, type, member) for ( \
-   typecheck_unqual(type *, entr),                             \
-   typecheck_unqual(struct list_node *, head),                 \
+   typecheck(type *, entr),                             \
+   typecheck(struct list_node *, head),                 \
    (entr) = list_last_entry(head, type, member);               \
    &(entr)->member != (head);                                  \
    (entr) = list_prev_entry(entr, type, member)                \
 )
 
 #define list_foreach_entry_safe(entr, tmp, head, type, member) for ( \
-   typecheck_unqual(type *, entr),                                   \
-   typecheck_unqual(type *, tmp),                                    \
-   typecheck_unqual(struct list_node *, head),                       \
+   typecheck(type *, entr),                                   \
+   typecheck(type *, tmp),                                    \
+   typecheck(struct list_node *, head),                       \
    (entr) = list_first_entry(head, type, member),                    \
    (tmp) = list_next_entry(entr, type, member);                      \
    &(entr)->member != (head);                                        \
@@ -172,9 +171,9 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_entry_safe_rev(entr, tmp, head, type, member) for (   \
-   typecheck_unqual(type *, entr),                                         \
-   typecheck_unqual(type *, tmp),                                          \
-   typecheck_unqual(struct list_node *, head),                             \
+   typecheck(type *, entr),                                         \
+   typecheck(type *, tmp),                                          \
+   typecheck(struct list_node *, head),                             \
    (entr) = list_last_entry(head, type, member),                           \
    (tmp) = list_prev_entry(entr, type, member);                            \
    &(entr)->member != (head);                                              \
@@ -183,22 +182,22 @@ extern void list_cut_before(struct list_node *head, struct list_node *entry, str
 )
 
 #define list_foreach_entry_from(entr, head, type, member) for (   \
-   typecheck_unqual(type *, entr),                                \
-   typecheck_unqual(struct list_node *, head);                    \
+   typecheck(type *, entr),                                \
+   typecheck(struct list_node *, head);                    \
    &(entr)->member != (head);                                     \
    (entr) = list_next_entry(entr, type, member)                   \
 )
 
 #define list_foreach_entry_rev_from(entr, head, type, member) for (  \
-   typecheck_unqual(type *, entr),                                   \
-   typecheck_unqual(struct list_node *, head);                       \
+   typecheck(type *, entr),                                   \
+   typecheck(struct list_node *, head);                       \
    &(entr)->member != (head);                                        \
    (entr) = list_prev_entry(entr, type, member)                      \
 )
 
 
 
-#ifdef _SNEERA_LIST_IMPL
+#ifdef HUZLIB_LIST_IMPL
 
 /* ------------------------------------------------ */
 /* --------------- query operations --------------- */
@@ -214,7 +213,7 @@ inline size_t list_len(const struct list_node *head)
    return len;
 }
 
-inline void list_dump(const struct list_node *head, void (*restrict dump)(struct list_node *))
+inline void list_dump(const struct list_node *head, void (*dump)(struct list_node *))
 {
    assert(head && dump);
    struct list_node *restrict cur;
@@ -268,7 +267,7 @@ inline bool list_is_last(const struct list_node *head, const struct list_node *e
 static inline void __list_add(struct list_node *restrict new, struct list_node *prev, struct list_node *next)
 {
    assert(new && prev && next);
-   assert((prev->next == next && next->prev == prev) ^ (prev->next->next == next && next->prev->prev == prev));
+   assert((prev->next == next && next->prev == prev) || (prev->next->next == next && next->prev->prev == prev));
 
    prev->next = new;
    next->prev = new;
@@ -351,16 +350,16 @@ static inline void __list_swap_adj(struct list_node *pre, struct list_node *rest
 /* --------------- mutate operations --------------- */
 /* ------------------------------------------------- */
 
-inline void list_add_after(struct list_node *restrict entry, struct list_node *restrict new)
+inline void list_add_after(struct list_node *restrict node, struct list_node *restrict new)
 {
-   assert(entry && new);
-   __list_add(new, entry, entry->next);
+   assert(node && new);
+   __list_add(new, node, node->next);
 }
 
-inline void list_add_before(struct list_node *restrict entry, struct list_node *restrict new)
+inline void list_add_before(struct list_node *restrict node, struct list_node *restrict new)
 {
-   assert(entry && new);
-   __list_add(new, entry->prev, entry);
+   assert(node && new);
+   __list_add(new, node->prev, node);
 }
 
 inline void list_del(struct list_node *restrict entry)
@@ -403,41 +402,41 @@ inline void list_swap(struct list_node *restrict a, struct list_node *restrict b
       __list_swap(a->prev, a, a->next, b->prev, b, b->next);
 }
 
-inline void list_mov_after(struct list_node *restrict entry, struct list_node *restrict dest)
+inline void list_mov_after(struct list_node *restrict node, struct list_node *restrict dest)
 {
-   assert(entry && dest);
-   list_del(entry);
-   list_add_after(dest, entry);
+   assert(node && dest);
+   list_del(node);
+   list_add_after(dest, node);
 }
 
-inline void list_mov_before(struct list_node *restrict entry, struct list_node *restrict dest)
+inline void list_mov_before(struct list_node *restrict node, struct list_node *restrict dest)
 {
-   assert(entry && dest);
-   list_del(entry);
-   list_add_before(dest, entry);
+   assert(node && dest);
+   list_del(node);
+   list_add_before(dest, node);
 }
 
-inline void list_rotate_after(struct list_node *head)
+inline void list_rotate_after(struct list_node *restrict head)
 {
    assert(head);
    if (!(list_is_empty(head) || list_is_singular(head)))
       __list_swap_adj(head->prev, head, head->next, head->next->next);
 }
 
-inline void list_rotate_before(struct list_node *head)
+inline void list_rotate_before(struct list_node *restrict head)
 {
    assert(head);
    if (!(list_is_empty(head) || list_is_singular(head)))
       __list_swap_adj(head->prev->prev, head->prev, head, head->next);
 }
 
-inline void list_reverse(struct list_node *head)
+inline void list_reverse(struct list_node *restrict head)
 {
    assert(head);
    struct list_node *cur, *tmp;
    list_foreach_safe(cur, tmp, head)
       SWAP(cur->prev, cur->next);
-   SWAP(cur->prev, cur->next); // cur == head
+   SWAP(head->prev, head->next);
 }
 
 /*
@@ -449,7 +448,7 @@ inline void list_reverse(struct list_node *head)
  *
  * --- this function was generated by Gemini 3 Fast ---
  */
-inline void list_sort(struct list_node *head, int (*restrict cmp)(struct list_node *, struct list_node *))
+inline void list_sort(struct list_node *head, int (*cmp)(struct list_node *, struct list_node *))
 {
    assert(head && cmp);
 
@@ -540,80 +539,80 @@ inline void list_sort(struct list_node *head, int (*restrict cmp)(struct list_no
 /* ------------------------------------------------ */
 
 /*
- * target:  entry <-> next_node
+ * target:  node <-> next_node
  * source:  [src] <-> first <-> ... <-> last <-> [src]
  *
- * after:   entry <-> first <-> ... <-> last <-> next_node
+ * after:   node <-> first <-> ... <-> last <-> next_node
  */
-inline void list_splice_after(struct list_node *restrict entry, struct list_node *restrict src)
+inline void list_splice_after(struct list_node *restrict node, struct list_node *restrict src)
 {
-   assert(entry && src);
-   __list_add_batch(src->next, src->prev, entry, entry->next);
+   assert(node && src);
+   __list_add_batch(src->next, src->prev, node, node->next);
 }
 
-inline void list_splice_after_init(struct list_node *restrict entry, struct list_node *restrict src)
+inline void list_splice_after_init(struct list_node *restrict node, struct list_node *restrict src)
 {
-   assert(entry && src);
-   list_splice_after(entry, src);
+   assert(node && src);
+   list_splice_after(node, src);
    list_init(src);
 }
 
 /*
- * target:  prev_node <-> entry
+ * target:  prev_node <-> node
  * source:  [src] <-> first <-> ... <-> last <-> [src]
  *
- * after:   prev_node <-> first <-> ... <-> last <-> entry
+ * after:   prev_node <-> first <-> ... <-> last <-> node
  */
-inline void list_splice_before(struct list_node *restrict entry, struct list_node *restrict src)
+inline void list_splice_before(struct list_node *restrict node, struct list_node *restrict src)
 {
-   assert(entry && src);
-   __list_add_batch(src->next, src->prev, entry->prev, entry);
+   assert(node && src);
+   __list_add_batch(src->next, src->prev, node->prev, node);
 }
 
-inline void list_splice_before_init(struct list_node *restrict entry, struct list_node *restrict src)
+inline void list_splice_before_init(struct list_node *restrict node, struct list_node *restrict src)
 {
-   assert(entry && src);
-   list_splice_before(entry, src);
+   assert(node && src);
+   list_splice_before(node, src);
    list_init(src);
 }
 
 /*
- * head:  [head] <-> 1 <-> ... <-> [entry] <-> [split_node] <-> ... <-> [head]
+ * node:  [node] <-> 1 <-> ... <-> [entry] <-> [split_node] <-> ... <-> [node]
  * dest:  [dest] <-> [dest] (must be empty)
  *
- * step 1: [head] <--------------------------> [split_node] (bypass segment)
+ * step 1: [node] <--------------------------> [split_node] (bypass segment)
  * step 2: [dest] <-> 1 <-> ... <-> [entry] <-> [dest]      (re-anchor segment)
  *
- * after:  head contains [head] <-> [split_node] ...
+ * after:  node contains [node] <-> [split_node] ...
  * dest contains [dest] <-> 1 ... <-> [entry]
  */
-inline void list_cut_after(struct list_node *restrict head, struct list_node *restrict entry, struct list_node *restrict dest)
+inline void list_cut_after(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
 {
-   assert(head && entry && list_is_empty(dest));
-   struct list_node *restrict _tmp = head->next;
-   __list_rm(head, entry->next);
+   assert(node && entry && list_is_empty(dest));
+   struct list_node *restrict _tmp = node->next;
+   __list_rm(node, entry->next);
    __list_add_batch(_tmp, entry, dest, dest);
 }
 
 /*
- * head:  [head] <-> ... <-> [prev_node] <-> [entry] <-> ... <-> [last] <-> [head]
+ * node:  [node] <-> ... <-> [prev_node] <-> [entry] <-> ... <-> [last] <-> [node]
  * dest:  [dest] <-> [dest] (must be empty)
  *
- * step 1: [head] <-> ... <-> [prev_node] <---------------------------> [head]
+ * step 1: [node] <-> ... <-> [prev_node] <---------------------------> [node]
  * step 2: [dest] <---------> [entry] <-> ... <-> [last] <------------> [dest]
  *
- * after:  head contains [head] <-> ... <-> [prev_node]
+ * after:  node contains [node] <-> ... <-> [prev_node]
  * dest contains [dest] <-> [entry] ... <-> [last]
  */
-inline void list_cut_before(struct list_node *restrict head, struct list_node *restrict entry, struct list_node *restrict dest)
+inline void list_cut_before(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
 {
-   assert(head && entry && list_is_empty(dest));
-   struct list_node *restrict _tmp = head->prev;
-   __list_rm(entry->prev, head);
+   assert(node && entry && list_is_empty(dest));
+   struct list_node *restrict _tmp = node->prev;
+   __list_rm(entry->prev, node);
    __list_add_batch(entry, _tmp, dest, dest);
 }
 
-#endif /* _SNEERA_LIST_IMPL */
+#endif /* HUZLIB_LIST_IMPL */
 
 
-#endif /* _SNEERA_LIST_H */
+#endif /* HUZLIB_LIST_H */
