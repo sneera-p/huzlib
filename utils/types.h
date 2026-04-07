@@ -1,8 +1,5 @@
-#ifndef HUZLIB_TYPES_H
-#define HUZLIB_TYPES_H
-
 #include <stddef.h>
-#include "xmacro.h"
+
 
 /*
  * Use the following compiler detection order in macros to 
@@ -28,7 +25,8 @@
  */
 
 
-#define _HAS_TYPEOF (                           \
+#ifndef HUZLIB_INTERNAL_HAS_TYPEOF
+#if (                                           \
    defined(__NVCC__) ||                         \
    defined(__INTEL_LLVM_COMPILER) ||            \
    defined(__INTEL_COMPILER) ||                 \
@@ -40,20 +38,34 @@
    defined(__POCC__) ||                         \
    defined(__SUNPRO_C) ||                       \
    defined(__SUNPRO_CC) ||                      \
-   (defined(_MSC_VER) && _MSC_VER >= 1938) ||   \
+   (defined(_MSC_VER) && (_MSC_VER >= 1938)) || \
    defined(__clang__) ||                        \
    defined(__GNUC__)                            \
 )
+   #define HUZLIB_INTERNAL_HAS_TYPEOF 1
+#else
+   #define HUZLIB_INTERNAL_HAS_TYPEOF 0
+#endif
+#endif
 
-#define _HAS_TYPEOF_UNQUAL (                                                  \
+
+#ifndef HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL
+#if (                                                                         \
    (defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20230000)) || \
    (defined(__ARMCOMPILER_VERSION) && (__ARMCOMPILER_VERSION >= 130000)) ||   \
-   (defined(_MSC_VER) && _MSC_VER >= 1938) ||                                 \
+   (defined(_MSC_VER) && (_MSC_VER >= 1938)) ||                               \
    (defined(__clang__) && (__clang_major__ >= 13)) ||                         \
    (defined(__GNUC__) && (__GNUC__ >= 11))                                    \
 )
+   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 1
+#else
+   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 0
+#endif
+#endif
 
-#define _HAS_DECLTYPE (                \
+
+#ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
+#if (                                  \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
    defined(__ARMCOMPILER_VERSION) ||   \
@@ -61,8 +73,15 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
+   #define HUZLIB_INTERNAL_HAS_DECLTYPE 1
+#else
+   #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
+#endif
+#endif
 
-#define _HAS_TYPES_COMPATIBLE (        \
+
+#ifndef HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE
+#if (                                  \
    defined(__NVCC__) ||                \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
@@ -71,8 +90,15 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
+   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 1
+#else
+   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 0
+#endif
+#endif
 
-#define _HAS_STATEMENT_EXPR (          \
+
+#ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
+#if (                                  \
    defined(__NVCC__) ||                \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
@@ -82,20 +108,26 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
+   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 1
+#else
+   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
+#endif
+#endif
 
 
 
-/* _UNIQUE(a)
+
+/* __huzuq(a)
  * -------------------
  * internal cancatation utility used to
  * create unique tmp varaible name
  *
  * WARN:
  * This macro is the internal implementation and should not be used directly.
- */ 
-#define __UNIQUE_CONCAT_INTERNAL(a, b) a##b
-#define __UNIQUE_CONCAT(a, b) __UNIQUE_CONCAT_INTERNAL(a, b)
-#define _UNIQUE(name) __UNIQUE_CONCAT(name, __LINE__)
+ */
+#define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
+#define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
+#define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
 
 
 
@@ -107,10 +139,10 @@
  * Retrieves the exact type of an expression at compile-time.
  */
 #if (__STDC_VERSION__ <= 201710L) && !defined(typeof)
-#if _HAS_TYPEOF
+#if HUZLIB_INTERNAL_HAS_TYPEOF
    #define typeof(expr) __typeof__(expr)
 
-#elif _HAS_DECLTYPE
+#elif HUZLIB_INTERNAL_HAS_DECLTYPE
    #define typeof(expr) __decltype(expr)
 
 #else
@@ -136,7 +168,7 @@
  * Validates types 'typea' and 'typeb' are the same
  */ 
 #ifndef types_equal
-#if _HAS_STATEMENT_EXPR
+#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
    #define types_equal(typea, typeb) __extension__ ({ \
       (void)((typea *)0 == (typeb *)0);               \
       1;                                              \
@@ -158,10 +190,7 @@
 #ifndef typecheck
 #define typecheck(type, expr) _Generic(   \
    (expr),                                \
-   type: 1,                               \
-   const type: 1,                         \
-   volatile type: 1,                      \
-   const volatile type: 1                 \
+   type: 1                               \
 )
 #endif /* typecheck */
 
@@ -204,16 +233,17 @@
    ((type *)((char*)(ptr) - offsetof(type, member)))
 
 
-#if _HAS_STATEMENT_EXPR && _HAS_TYPEOF
-   #define container_of(ptr, type, member) __extension__ ({       \
-      __typeof__(((type *)0)->member) *_UNIQUE(__mptr) = (ptr);   \
-      __container_of(_UNIQUE(__mptr), type, member);              \
+#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
+   #define __container_of_concat(a, b) a##b
+   #define container_of(ptr, type, member) __extension__ ({ \
+      typeof(((type *)0)->member) *__mcumptr = (ptr);       \
+      __container_of(__mcumptr, type, member);              \
    })
 
 #else
-   #define container_of(ptr, type, member) typecheck_expr(        \
-      typeof(((type *)0)->member) *, (ptr),                       \
-      __container_of(ptr, type, member)                           \
+   #define container_of(ptr, type, member) typecheck_expr(  \
+      typeof(((type *)0)->member) *, (ptr),                 \
+      __container_of(ptr, type, member)                     \
    )
 
 #endif
@@ -237,9 +267,9 @@
 #ifndef SWAP
 #define SWAP(a, b) do {             \
    typecheck(typeof(a), b);         \
-   typeof(a) _UNIQUE(__tmp) = a;    \
+   typeof(a) __huzuq(__tmp) = a;    \
    a = b;                           \
-   b = _UNIQUE(__tmp);              \
+   b = __huzuq(__tmp);              \
 } while (0)
 #endif
 
@@ -259,12 +289,8 @@
  */
 #ifndef swap
 #define swap(a, b) do {                \
-   typeof(a) *_UNIQUE(__a) = &(a);     \
-   typeof(b) *_UNIQUE(__b) = &(b);     \
-   SWAP(*_UNIQUE(__a), *_UNIQUE(__b)); \
+   typeof(a) *__huzuq(__a) = &(a);     \
+   typeof(b) *__huzuq(__b) = &(b);     \
+   SWAP(*__huzuq(__a), *__huzuq(__b)); \
 } while (0)
 #endif
-
-
-
-#endif /* HUZLIB_TYPES_H */

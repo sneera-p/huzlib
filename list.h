@@ -1,10 +1,289 @@
 #ifndef HUZLIB_LIST_H
 #define HUZLIB_LIST_H
 
+
+/* --------------------------------------------------------------------------- */
+/* ------------------------------ utils/types.h ------------------------------ */
+/* --------------------------------------------------------------------------- */
+
+#include <stddef.h>
+
+
+/*
+ * Use the following compiler detection order in macros to 
+ * avoid my ass being riddled with spice trying to find which 
+ * one of my braincells forgot to add a compiler and maintain 
+ * Human(logn) search time for this particular ass ripping
+ *
+ * Order:
+ *    defined(__NVCC__)
+ *    defined(__INTEL_LLVM_COMPILER)
+ *    defined(__INTEL_COMPILER)
+ *    defined(__ARMCOMPILER_VERSION)
+ *    defined(__ibmxl__)
+ *    defined(__xlC__)
+ *    defined(__zig__)
+ *    defined(__TINYC__)
+ *    defined(__POCC__)
+ *    defined(__SUNPRO_C)
+ *    defined(__SUNPRO_CC)
+ *    defined(_MSC_VER)
+ *    defined(__clang__)
+ *    defined(__GNUC__)
+ */
+
+
+#ifndef HUZLIB_INTERNAL_HAS_TYPEOF
+#if (                                           \
+   defined(__NVCC__) ||                         \
+   defined(__INTEL_LLVM_COMPILER) ||            \
+   defined(__INTEL_COMPILER) ||                 \
+   defined(__ARMCOMPILER_VERSION) ||            \
+   defined(__ibmxl__) ||                        \
+   defined(__xlC__) ||                          \
+   defined(__zig__) ||                          \
+   defined(__TINYC__) ||                        \
+   defined(__POCC__) ||                         \
+   defined(__SUNPRO_C) ||                       \
+   defined(__SUNPRO_CC) ||                      \
+   (defined(_MSC_VER) && (_MSC_VER >= 1938)) || \
+   defined(__clang__) ||                        \
+   defined(__GNUC__)                            \
+)
+   #define HUZLIB_INTERNAL_HAS_TYPEOF 1
+#else
+   #define HUZLIB_INTERNAL_HAS_TYPEOF 0
+#endif
+#endif
+
+
+#ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
+#if (                                  \
+   defined(__INTEL_LLVM_COMPILER) ||   \
+   defined(__INTEL_COMPILER) ||        \
+   defined(__ARMCOMPILER_VERSION) ||   \
+   defined(_MSC_VER) ||                \
+   defined(__clang__) ||               \
+   defined(__GNUC__)                   \
+)
+   #define HUZLIB_INTERNAL_HAS_DECLTYPE 1
+#else
+   #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
+#endif
+#endif
+
+
+#ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
+#if (                                  \
+   defined(__NVCC__) ||                \
+   defined(__INTEL_LLVM_COMPILER) ||   \
+   defined(__INTEL_COMPILER) ||        \
+   defined(__ARMCOMPILER_VERSION) ||   \
+   defined(__zig__) ||                 \
+   defined(__TINYC__) ||               \
+   defined(__clang__) ||               \
+   defined(__GNUC__)                   \
+)
+   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 1
+#else
+   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
+#endif
+#endif
+
+
+
+
+/* __huzuq(a)
+ * -------------------
+ * internal cancatation utility used to
+ * create unique tmp varaible name
+ *
+ * WARN:
+ * This macro is the internal implementation and should not be used directly.
+ */
+#define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
+#define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
+#define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
+
+
+
+
+
+/*
+ * typeof(expr)
+ * ------------
+ * Retrieves the exact type of an expression at compile-time.
+ */
+#if (__STDC_VERSION__ <= 201710L) && !defined(typeof)
+#if HUZLIB_INTERNAL_HAS_TYPEOF
+   #define typeof(expr) __typeof__(expr)
+
+#elif HUZLIB_INTERNAL_HAS_DECLTYPE
+   #define typeof(expr) __decltype(expr)
+
+#else
+   #error "Cannot define typeof(expr)"
+
+#endif
+#endif /* typeof */
+
+
+/*
+ * typecheck(type, expr)
+ * ---------------------
+ * Validates 'expr' matches 'type' exactly.
+ */
+#ifndef typecheck
+#define typecheck(type, expr) _Generic(   \
+   (expr),                                \
+   type: 1                                \
+)
+#endif /* typecheck */
+
+
+/*
+ * typecheck_expr(type, var, expr)
+ * -------------------------------
+ * Validates that 'var' is of 'type', then evaluates 'expr'.
+ *
+ * Features:
+ *    - Qualifier Agnostic:   Accepts type, const type, volatile type, and const volatile type.
+ *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
+ */
+#ifndef typecheck_expr
+#define typecheck_expr(type, var, expr) (typecheck(type, var), (expr))
+#endif /* typecheck_expr */
+
+
+
+
+/*
+ * container_of(ptr, type, member)
+ * -------------------------------
+ * cast a member of a structure out to the containing structure
+ *
+ * @ptr:    pointer to member
+ * @type:   type of the container struct member is embedded in
+ * @member: the name of the member field
+ *
+ * Return: pointer to the containing structure
+ */
+#if (__STDC_VERSION__ <= 202311L) && !defined(container_of)
+
+/*
+ * WARNING:
+ * This macro is the internal implementation and should not be used directly.
+ * Use container_of() instead which provides type checking when available.
+ */
+#define __container_of(ptr, type, member) \
+   ((type *)((char*)(ptr) - offsetof(type, member)))
+
+
+#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
+   #define __container_of_concat(a, b) a##b
+   #define container_of(ptr, type, member) __extension__ ({ \
+      typeof(((type *)0)->member) *__mcumptr = (ptr);       \
+      __container_of(__mcumptr, type, member);              \
+   })
+
+#else
+   #define container_of(ptr, type, member) typecheck_expr(  \
+      typeof(((type *)0)->member) *, (ptr),                 \
+      __container_of(ptr, type, member)                     \
+   )
+
+#endif
+#endif /* container_of */
+
+
+/*
+ * SWAP(a, b)
+ * ----------
+ * Swaps the values of variables @a and @b using a temporary variable
+ *
+ * This macro works with any data type, including structures and unions, as
+ * long as assignment is supported. It does not require the two variables to
+ * be of exactly the same type, but they must be assignment-compatible.
+ *
+ * WARNING:
+ * This macro evaluates its arguments multiple times. Do NOT pass
+ * expressions with side effects such as i++, *p++, or function calls.
+ * Doing so will result in undefined behavior.
+ */
+#ifndef SWAP
+#define SWAP(a, b) do {             \
+   typecheck(typeof(a), b);         \
+   typeof(a) __huzuq(__tmp) = a;    \
+   a = b;                           \
+   b = __huzuq(__tmp);              \
+} while (0)
+#endif
+
+
+
+
+/* -------------------------------------------------------------------------- */
+/* ---------------------------- utils/prefetch.h ---------------------------- */
+/* -------------------------------------------------------------------------- */
+
+
+/*
+ * prefetch_read(addr)
+ * -------------------
+ * Portable prefetch — compiler detection chain.
+ * Always: read prefetch, non-temporal (locality 0).
+ * Falls back to a no-op (void cast) on unknown compilers —
+ * a no-op is always correct, just not optimal.
+ */
+#ifndef prefetch_read
+
+#define _PREFETCH_X86 (defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64))
+#define _PREFETCH_ARM (defined(__arm__) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64))
+
+
+#if (defined(__xlC__) || defined(__ibmxl__)) && (defined(__powerpc__) || defined(__ppc__) || defined(__POWERPC__))
+   #define prefetch_read(addr)      __dcbt(addr)
+
+#elif defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+   #if defined(__sparc) || defined(__sparc__)
+      #define prefetch_read(addr)   __asm__ volatile ("prefetch [%0], 1" : : "r" (addr))
+   #elif _PREFETCH_X86
+      #include <immintrin.h>
+      #define prefetch_read(addr)   _mm_prefetch((const char *)(addr), _MM_HINT_NTA)
+   #else
+      #define prefetch_read(addr)   ((void)(addr))
+   #endif
+
+#elif defined(_MSC_VER)
+   #include <intrin.h>
+   #if _PREFETCH_ARM
+      #define prefetch_read(addr)   __prefetch(addr)
+   #elif _PREFETCH_X86
+      #define prefetch_read(addr)   _mm_prefetch((const char *)(addr), _MM_HINT_NTA)
+   #else
+      #define prefetch_read(addr)   ((void)(addr))
+   #endif
+
+#elif defined(__ZIG__) || defined(__zig__) || defined(__TINYC__) || defined(__clang__) || defined(__GNUC__)
+   #define prefetch_read(addr)      __builtin_prefetch((addr), 0, 0)
+
+#else
+   #define prefetch_read(addr)      ((void)(addr))
+
+#endif
+
+#endif /* prefetch_read */
+
+/* --------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------- */
+
+
+
+
+
 #include <assert.h>
 #include <stdbool.h>
-#include "types.h"
-#include "prefetch.h"
 
 
 struct list_node
@@ -62,58 +341,58 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
 
 
 /* --- list traversal --- */
-#define list_foreach(pos, head) for (           \
-   typecheck(struct list_node *, pos),          \
-   typecheck(struct list_node *, head),         \
-   (pos) = (head)->next;                        \
-   (pos) != (head);                             \
-   (pos) = (pos)->next                          \
+#define list_foreach(pos, head) for (                 \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) = (head)->next;                              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->next                                \
 )
 
-#define list_foreach_rev(pos, head) for (       \
-   typecheck(struct list_node *, pos),          \
-   typecheck(struct list_node *, head),         \
-   (pos) = (head)->prev;                        \
-   (pos) != (head);                             \
-   (pos) = (pos)->prev                          \
+#define list_foreach_rev(pos, head) for (             \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) = (head)->prev;                              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->prev                                \
 )
 
-#define list_foreach_prefetch(pos, head) for (  \
-   typecheck(struct list_node *, pos),          \
-   typecheck(struct list_node *, head),         \
-   (pos) = (head)->next;                        \
-   (pos) != (head);                             \
-   (pos) = (pos)->next,                         \
-   prefetch_read((pos)->next)                   \
+#define list_foreach_prefetch(pos, head) for (        \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) = (head)->next;                              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->next,                               \
+   prefetch_read((pos)->next)                         \
 )
 
-#define list_foreach_prefetch2(pos, head) for ( \
-   typecheck(struct list_node *, pos),   \
-   typecheck(struct list_node *, head),  \
-   (pos) = (head)->next;                        \
-   (pos) != (head);                             \
-   (pos) = (pos)->next,                         \
-   ((pos)->next != (head)                       \
-      ? prefetch_read((pos)->next->next)        \
-      : (void)0                                 \
-   )                                            \
+#define list_foreach_prefetch2(pos, head) for (       \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) = (head)->next;                              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->next,                               \
+   ((pos)->next != (head)                             \
+      ? prefetch_read((pos)->next->next)              \
+      : (void)0                                       \
+   )                                                  \
 )
 
-#define list_foreach_safe(pos, tmp, head) for ( \
-   typecheck(struct list_node *, pos),   \
-   typecheck(struct list_node *, tmp),   \
-   typecheck(struct list_node *, head),  \
-   (pos) = (head)->next,                        \
-   (tmp) = (pos)->next;                         \
-   (pos) != (head);                             \
-   (pos) = (tmp),                               \
-   (tmp) = (tmp)->next                          \
+#define list_foreach_safe(pos, tmp, head) for (       \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(tmp)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) = (head)->next,                              \
+   (tmp) = (pos)->next;                               \
+   (pos) != (head);                                   \
+   (pos) = (tmp),                                     \
+   (tmp) = (tmp)->next                                \
 )
 
 #define list_foreach_safe_rev(pos, tmp, head) for (   \
-   typecheck(struct list_node *, pos),         \
-   typecheck(struct list_node *, tmp),         \
-   typecheck(struct list_node *, head),        \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(tmp)),               \
+   typecheck(struct list_node, *(head)),              \
    (pos) = (head)->prev,                              \
    (tmp) = (pos)->prev;                               \
    (pos) != (head);                                   \
@@ -121,18 +400,18 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
    (tmp) = (tmp)->prev                                \
 )
 
-#define list_foreach_from(pos, head) for (      \
-   typecheck(struct list_node *, pos),   \
-   typecheck(struct list_node *, head);  \
-   (pos) != (head);                             \
-   (pos) = (pos)->next                          \
+#define list_foreach_from(pos, head) for (            \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->next                                \
 )
 
-#define list_foreach_rev_from(pos, head) for (  \
-   typecheck(struct list_node *, pos),   \
-   typecheck(struct list_node *, head);  \
-   (pos) != (head);                             \
-   (pos) = (pos)->prev                          \
+#define list_foreach_rev_from(pos, head) for (        \
+   typecheck(struct list_node, *(pos)),               \
+   typecheck(struct list_node, *(head)),              \
+   (pos) != (head);                                   \
+   (pos) = (pos)->prev                                \
 )
 
 
@@ -143,37 +422,37 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
 #define list_next_entry(entr, type, member)  container_of((entr)->member.next, type, member)
 #define list_prev_entry(entr, type, member)  container_of((entr)->member.prev, type, member)
 
-#define list_foreach_entry(entr, head, type, member) for (  \
-   typecheck(type *, entr),                          \
-   typecheck(struct list_node *, head),              \
-   (entr) = list_first_entry(head, type, member);           \
-   &(entr)->member != (head);                               \
-   (entr) = list_next_entry(entr, type, member)             \
+#define list_foreach_entry(entr, head, type, member) for (                 \
+   typecheck(type, *(entr)),                                               \
+   typecheck(struct list_node, *(head)),                                   \
+   (entr) = list_first_entry(head, type, member);                          \
+   &(entr)->member != (head);                                              \
+   (entr) = list_next_entry(entr, type, member)                            \
 )
 
-#define list_foreach_entry_rev(entr, head, type, member) for ( \
-   typecheck(type *, entr),                             \
-   typecheck(struct list_node *, head),                 \
-   (entr) = list_last_entry(head, type, member);               \
-   &(entr)->member != (head);                                  \
-   (entr) = list_prev_entry(entr, type, member)                \
+#define list_foreach_entry_rev(entr, head, type, member) for (             \
+   typecheck(type, *(entr)),                                               \
+   typecheck(struct list_node, *(head)),                                   \
+   (entr) = list_last_entry(head, type, member);                           \
+   &(entr)->member != (head);                                              \
+   (entr) = list_prev_entry(entr, type, member)                            \
 )
 
-#define list_foreach_entry_safe(entr, tmp, head, type, member) for ( \
-   typecheck(type *, entr),                                   \
-   typecheck(type *, tmp),                                    \
-   typecheck(struct list_node *, head),                       \
-   (entr) = list_first_entry(head, type, member),                    \
-   (tmp) = list_next_entry(entr, type, member);                      \
-   &(entr)->member != (head);                                        \
-   (entr) = (tmp),                                                   \
-   (tmp) = list_next_entry(tmp, type, member)                        \
+#define list_foreach_entry_safe(entr, tmp, head, type, member) for (       \
+   typecheck(type, *(entr)),                                               \
+   typecheck(type, *(tmp)),                                                \
+   typecheck(struct list_node, *(head)),                                   \
+   (entr) = list_first_entry(head, type, member),                          \
+   (tmp) = list_next_entry(entr, type, member);                            \
+   &(entr)->member != (head);                                              \
+   (entr) = (tmp),                                                         \
+   (tmp) = list_next_entry(tmp, type, member)                              \
 )
 
 #define list_foreach_entry_safe_rev(entr, tmp, head, type, member) for (   \
-   typecheck(type *, entr),                                         \
-   typecheck(type *, tmp),                                          \
-   typecheck(struct list_node *, head),                             \
+   typecheck(type, *(entr)),                                               \
+   typecheck(type, *(tmp)),                                                \
+   typecheck(struct list_node, *(head)),                                   \
    (entr) = list_last_entry(head, type, member),                           \
    (tmp) = list_prev_entry(entr, type, member);                            \
    &(entr)->member != (head);                                              \
@@ -181,18 +460,18 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
    (tmp) = list_prev_entry(tmp, type, member)                              \
 )
 
-#define list_foreach_entry_from(entr, head, type, member) for (   \
-   typecheck(type *, entr),                                \
-   typecheck(struct list_node *, head);                    \
-   &(entr)->member != (head);                                     \
-   (entr) = list_next_entry(entr, type, member)                   \
+#define list_foreach_entry_from(entr, head, type, member) for (            \
+   typecheck(type, *(entr)),                                               \
+   typecheck(struct list_node, *(head)),                                   \
+   &(entr)->member != (head);                                              \
+   (entr) = list_next_entry(entr, type, member)                            \
 )
 
-#define list_foreach_entry_rev_from(entr, head, type, member) for (  \
-   typecheck(type *, entr),                                   \
-   typecheck(struct list_node *, head);                       \
-   &(entr)->member != (head);                                        \
-   (entr) = list_prev_entry(entr, type, member)                      \
+#define list_foreach_entry_rev_from(entr, head, type, member) for (        \
+   typecheck(type, *(entr)),                                               \
+   typecheck(struct list_node, *(head)),                                   \
+   &(entr)->member != (head);                                              \
+   (entr) = list_prev_entry(entr, type, member)                            \
 )
 
 
@@ -613,6 +892,14 @@ inline void list_cut_before(struct list_node *restrict node, struct list_node *r
 }
 
 #endif /* HUZLIB_LIST_IMPL */
+
+
+
+
+#ifdef HUZLIB_LIST_TEST
+#endif /* HUZLIB_LIST_TEST */
+
+
 
 
 #endif /* HUZLIB_LIST_H */

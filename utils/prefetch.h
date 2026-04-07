@@ -1,7 +1,3 @@
-#ifndef HUZLIB_PREFETCH_H
-#define HUZLIB_PREFETCH_H
-
-
 /*
  * prefetch_read(addr)
  * -------------------
@@ -48,6 +44,3 @@
 #endif
 
 #endif /* prefetch_read */
-
-
-#endif /* HUZLIB_PREFETCH_H */

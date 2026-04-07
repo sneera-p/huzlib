@@ -1,6 +1,6 @@
 # Compiler Support: `typeof`/`decltype` and `_Generic`
 
-## ✅ Compiler Support
+## ✅ Compiler Supported
 
 The following list contains the minimum version of compilers supported by
 this library. The reason for this is the requirement to have the compiler
