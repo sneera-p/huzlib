@@ -13,3 +13,7 @@ inputs/**
 *.txt
 *.bat
 *.log
+
+a.out
+a.exe
+main.c

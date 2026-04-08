@@ -131,7 +131,6 @@
 
 
 #include <assert.h>
-#include <stdint.h>
 #include <limits.h>
 
 /* ------- shorthand names ------- */
@@ -158,12 +157,18 @@
 
 
 
+typedef unsigned char      uchar;
+typedef unsigned short     ushort;
+typedef unsigned int       uint;
+typedef unsigned long      ulong;
+typedef unsigned long long ullong;
 
 #define HUZLIB_BIT_INTERNAL_TYPES(x, ...) \
-   x(uint8_t, __VA_ARGS__)                \
-   x(uint16_t, __VA_ARGS__)               \
-   x(uint32_t, __VA_ARGS__)               \
-   x(uint64_t, __VA_ARGS__)
+   x(uchar, __VA_ARGS__)                  \
+   x(ushort, __VA_ARGS__)                 \
+   x(uint, __VA_ARGS__)                   \
+   x(ulong, __VA_ARGS__)                  \
+   x(ullong, __VA_ARGS__)
 
 #define HUZLIB_BIT_INTERNAL_C23_PROTOS(type, x) \
    x(type, trailing_zeros, type w)              \
@@ -217,39 +222,44 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
 #else
    HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_C23_PROTOS, HUZLIB_BIT_INTERNAL_DECLARE_PROTO)
 
-   #define bit_trailing_zeros(w)             _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_trailing_zeros),       \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_trailing_zeros),       \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_trailing_zeros),       \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_trailing_zeros)        \
+   #define bit_trailing_zeros(w)             _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_trailing_zeros),       \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_trailing_zeros),      \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_trailing_zeros),        \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_trailing_zeros),       \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_trailing_zeros)       \
                                              )(w)
 
-   #define bit_leading_zeros(w)              _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_leading_zeros),        \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_leading_zeros),        \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_leading_zeros),        \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_leading_zeros)         \
+   #define bit_leading_zeros(w)              _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_leading_zeros),        \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_leading_zeros),       \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_leading_zeros),         \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_leading_zeros),        \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_leading_zeros)        \
                                              )(w)
 
-   #define bit_count_ones(w)                 _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_count_ones),           \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_count_ones),           \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_count_ones),           \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_count_ones)            \
+   #define bit_count_ones(w)                 _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_count_ones),           \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_count_ones),          \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_count_ones),            \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_count_ones),           \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_count_ones)           \
                                              )(w)
 
-   #define bit_first_trailing_one(w)         _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_first_trailing_one),   \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_first_trailing_one),   \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_first_trailing_one),   \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_first_trailing_one)    \
+   #define bit_first_trailing_one(w)         _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_first_trailing_one),   \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_first_trailing_one),  \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_first_trailing_one),    \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_first_trailing_one),   \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_first_trailing_one)   \
                                              )(w)
 
-   #define bit_first_leading_one(w)          _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_first_leading_one),    \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_first_leading_one),    \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_first_leading_one),    \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_first_leading_one)     \
+   #define bit_first_leading_one(w)          _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_first_leading_one),    \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_first_leading_one),   \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_first_leading_one),     \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_first_leading_one),    \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_first_leading_one)    \
                                              )(w)
 
 
@@ -259,25 +269,28 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
    #define bit_first_trailing_zero(w)        bit_first_trailing_one((typeof(w))~(w))
    #define bit_first_leading_zero(w)         bit_first_leading_one((typeof(w))~(w))
 
-   #define bit_width(w)                      _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_width),                \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_width),                \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_width),                \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_width)                 \
+   #define bit_width(w)                      _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_width),                \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_width),               \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_width),                 \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_width),                \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_width)                \
                                              )(w)
 
-   #define bit_ceil(w)                       _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_ceil),                 \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_ceil),                 \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_ceil),                 \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_ceil)                  \
+   #define bit_ceil(w)                       _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_ceil),                 \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_ceil),                \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_ceil),                  \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_ceil),                 \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_ceil)                 \
                                              )(w)
 
-   #define bit_floor(w)                      _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_floor),                \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_floor),                \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_floor),                \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_floor)                 \
+   #define bit_floor(w)                      _Generic((w),                                                                    \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_floor),                \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_floor),               \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_floor),                 \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_floor),                \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_floor)                \
                                              )(w)
 
 #endif /* C23 PROTOS */
@@ -298,17 +311,19 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
    HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_C2Y_PROTOS, HUZLIB_BIT_INTERNAL_DECLARE_PROTO)
 
    #define bit_rotate_left(w, rot)           _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_rotate_left),          \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_rotate_left),          \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_rotate_left),          \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_rotate_left)           \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_rotate_left),             \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_rotate_left),            \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_rotate_left),              \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_rotate_left),             \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_rotate_left)             \
                                              )(w, rot)
 
    #define bit_rotate_right(w, rot)          _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_rotate_right),         \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_rotate_right),         \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_rotate_right),         \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_rotate_right)          \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_rotate_right),            \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_rotate_right),           \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_rotate_right),             \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_rotate_right),            \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_rotate_right)            \
                                              )(w, rot)
 
 #endif /* C2Y PROTOS */
@@ -317,17 +332,19 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
 HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DECLARE_PROTO)
 
 #define bit_rotate_left_part(w, rot, cnt)    _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_rotate_left_part),     \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_rotate_left_part),     \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_rotate_left_part),     \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_rotate_left_part)      \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_rotate_left_part),        \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_rotate_left_part),       \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_rotate_left_part),         \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_rotate_left_part),        \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_rotate_left_part)        \
                                              )(w, rot, cnt)
 
 #define bit_rotate_right_part(w, rot, cnt)   _Generic((w),                                                                       \
-                                                uint8_t:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint8_t,  bit_rotate_right_part),    \
-                                                uint16_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint16_t, bit_rotate_right_part),    \
-                                                uint32_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint32_t, bit_rotate_right_part),    \
-                                                uint64_t: HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint64_t, bit_rotate_right_part)     \
+                                                uchar:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uchar,  bit_rotate_right_part),       \
+                                                ushort:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ushort,  bit_rotate_right_part),      \
+                                                uint:    HUZLIB_BIT_INTERNAL_GENERIC_PROTO(uint,  bit_rotate_right_part),        \
+                                                ulong:   HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ulong,  bit_rotate_right_part),       \
+                                                ullong:  HUZLIB_BIT_INTERNAL_GENERIC_PROTO(ullong,  bit_rotate_right_part)       \
                                              )(w, rot, cnt)
 
 
@@ -1427,7 +1444,20 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART, 
 void setUp(void) {}
 void tearDown(void) {}
 
-#define HUZLIB_RUN_TEST(type, func, ...)  RUN_TEST(func##_##type);
+#define HUZLIB_BIT_INTERNAL_TEST_TYPES(x, ...)  \
+   x(uint8_t, __VA_ARGS__)                      \
+   x(uint16_t, __VA_ARGS__)                     \
+   x(uint32_t, __VA_ARGS__)                     \
+   x(uint64_t, __VA_ARGS__)                     \
+   x(size_t, __VA_ARGS__)                       \
+   x(uintptr_t, __VA_ARGS__)                    \
+   x(unsigned, __VA_ARGS__)                     \
+   x(uchar, __VA_ARGS__)                        \
+   x(ushort, __VA_ARGS__)                       \
+   x(uint, __VA_ARGS__)                         \
+   x(ulong, __VA_ARGS__)                        \
+   x(ullong, __VA_ARGS__)
+
 
 #define HUZLIB_GENERATE_CTZ_TEST(type, ...)                 \
 static void test_bit_ctz_##type(void)                       \
@@ -1464,18 +1494,25 @@ static void test_bit_clz_##type(void)                       \
 }
 
 
-HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_GENERATE_CTZ_TEST, _)
-HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_GENERATE_CLZ_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CTZ_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CLZ_TEST, _)
+
+
+#define HUZLIB_BIT_RUN_TEST(type, func, ...)  RUN_TEST(func##_##type);
 
 int main()
 {
    UnityBegin("test/bit.h");
 
-   HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_RUN_TEST, test_bit_ctz)
-   HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_RUN_TEST, test_bit_clz)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_ctz)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_clz)
 
    return UnityEnd();
 }
+
+#undef HUZLIB_BIT_RUN_TEST
+#undef HUZLIB_BIT_INTERNAL_TEST_TYPES
 
 #endif /* HUZLIB_BIT_TEST */
 
