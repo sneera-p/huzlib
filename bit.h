@@ -1,3 +1,253 @@
+/*
+ * bit.h - bit manipulation library
+ *
+ *  This is a single-header C library for bit manipulation.
+ *  It works with unsigned integer types only (uchar, ushort, uint, ulong, ullong).
+ *  It uses C11 _Generic to automatically detect the type of your variable.
+ *  It acts as a fallback for C23 <stdbit.h> if your compiler does not support it.
+ *  It uses fast hardware instructions when available, and fast software fallbacks when not.
+ *
+ *  To use this library, do this in *one* C file:
+ *
+ *     #define HUZLIB_BIT_IMPL
+ *     #include "bit.h"
+ *
+ *
+ * TABLE OF CONTENTS
+ *
+ *   Usage
+ *   Types
+ *   Supported types
+ *   Configuration
+ *   Count functions
+ *   Find functions
+ *   Power-of-2 functions
+ *   Rotation functions
+ *   Bit swap macros
+ *   Testing
+ *
+ *
+ * USAGE:
+ *
+ *   You have two ways to use this library:
+ *
+ *     Method 1: Include in your code
+ *
+ *       Include this header in any file that needs bit manipulation:
+ *
+ *           #include "bit.h"
+ *
+ *       In EXACTLY ONE C or C++ source file, define the implementation macro before including:
+ *
+ *           #define HUZLIB_BIT_IMPL
+ *           #include "bit.h"
+ *
+ *     Method 2: Compile to an object file
+ *
+ *       You can compile this header directly into a single object file.
+ *       Run this command in your terminal:
+ *
+ *           $cc -c -DHUZLIB_BIT_IMPL -x c bit.h -o bit.o
+ *
+ *       The `-x c` flag tells the compiler to treat the header as a C source file.
+ *       Link the resulting object file with your project. Include `bit.h` normally in your code without the macro.
+ *
+ *
+ * TYPES
+ *
+ *   This library defines short names for unsigned integer types:
+ *
+ *     uchar    unsigned char
+ *     ushort   unsigned short
+ *     uint     unsigned int
+ *     ulong    unsigned long
+ *     ullong   unsigned long long
+ *
+ *
+ * SUPPORTED TYPES
+ *
+ *   All functions accept any of these types as input:
+ *
+ *     uchar, ushort, uint, ulong, ullong
+ *
+ *   The input type determines the width used for all bit operations.
+ *   Pass values as the correct type to get correct results:
+ *
+ *     bit_clz((uint8_t)1)   // counts leading zeros in 8 bits  -> 7
+ *     bit_clz((uint32_t)1)  // counts leading zeros in 32 bits -> 31
+ *
+ *
+ * CONFIGURATION:
+ *
+ *   If fast hardware instructions are not available, the library uses software emulation.
+ *   You can choose the emulation method before defining HUZLIB_BIT_IMPL:
+ *
+ *     #define BIT_DEFAULT_FALLBACK_HIGH_MEMORY  // Faster (O(1) time), uses more memory (lookup tables)
+ *     #define BIT_DEFAULT_FALLBACK_LOW_MEMORY   // Slower (O(logn) time), uses no extra memory
+ *
+ *
+ * COUNT FUNCTIONS
+ *
+ *   bit_trailing_zeros(w)       bit_ctz(w)
+ *     - counts zero bits starting from bit 0 (LSB) up
+ *     - stops at the first 1 bit
+ *     - returns the width of the type if w == 0
+ *     - example: bit_ctz((uint8_t)0b00001100) -> 2
+ *
+ *   bit_trailing_ones(w)        bit_cto(w)
+ *     - counts one bits starting from bit 0 (LSB) up
+ *     - stops at the first 0 bit
+ *     - returns 0 if w == 0
+ *     - example: bit_cto((uint8_t)0b00000111) -> 3
+ *
+ *   bit_leading_zeros(w)        bit_clz(w)
+ *     - counts zero bits starting from the MSB down
+ *     - stops at the first 1 bit
+ *     - returns the width of the type if w == 0
+ *     - example: bit_clz((uint8_t)0b00001100) -> 4
+ *
+ *   bit_leading_ones(w)         bit_clo(w)
+ *     - counts one bits starting from the MSB down
+ *     - stops at the first 0 bit
+ *     - returns 0 if w == 0
+ *     - example: bit_clo((uint8_t)0b11100000) -> 3
+ *
+ *   bit_count_ones(w)           bit_popc(w)
+ *     - counts all 1 bits in w (popcount)
+ *     - example: bit_popc((uint8_t)0b10110101) -> 5
+ *
+ *   bit_count_zeros(w)          bit_popcz(w)
+ *     - counts all 0 bits in w
+ *     - equivalent to bit_popc(~w)
+ *     - example: bit_popcz((uint8_t)0b10110101) -> 3
+ *
+ *
+ * FIND FUNCTIONS
+ *
+ *   All find functions return a 1-based position counted from the LSB.
+ *   "first trailing" means the lowest-index matching bit.
+ *   "first leading"  means the highest-index matching bit.
+ *   Return 0 if no matching bit exists.
+ *
+ *   bit_first_trailing_one(w)   bit_ffs(w)
+ *     - position of the lowest 1 bit (1-indexed from LSB)
+ *     - returns 0 if w == 0
+ *     - example: bit_ffs((uint8_t)0b00001100) -> 3
+ *
+ *   bit_first_trailing_zero(w)  bit_ffsz(w)
+ *     - position of the lowest 0 bit (1-indexed from LSB)
+ *     - returns 0 if w == ~0 (all ones)
+ *     - example: bit_ffsz((uint8_t)0b11110110) -> 1
+ *
+ *   bit_first_leading_one(w)    bit_fls(w)
+ *     - position of the highest 1 bit (1-indexed from LSB)
+ *     - returns 0 if w == 0
+ *     - example: bit_fls((uint8_t)0b00001100) -> 4
+ *
+ *   bit_first_leading_zero(w)   bit_flsz(w)
+ *     - position of the highest 0 bit (1-indexed from LSB)
+ *     - returns 0 if w == ~0 (all ones)
+ *     - example: bit_flsz((uint8_t)0b00001100) -> 8
+ *
+ *
+ * POWER-OF-2 FUNCTIONS
+ *
+ *   bit_width(w)
+ *     - number of bits needed to represent w
+ *     - equal to floor(log2(w)) + 1 for w > 0
+ *     - returns 0 if w == 0
+ *     - example: bit_width((uint8_t)12) -> 4
+ *
+ *   bit_ceil(w)
+ *     - smallest power of 2 >= w
+ *     - returns 1 if w == 0
+ *     - returns w if w is already a power of 2
+ *     - behavior is undefined if the result does not fit in the type
+ *     - example: bit_ceil((uint8_t)5) -> 8
+ *     - example: bit_ceil((uint8_t)8) -> 8
+ *
+ *   bit_floor(w)
+ *     - largest power of 2 <= w
+ *     - returns 0 if w == 0
+ *     - returns w if w is already a power of 2
+ *     - example: bit_floor((uint8_t)5) -> 4
+ *     - example: bit_floor((uint8_t)8) -> 8
+ *
+ *
+ * ROTATION FUNCTIONS
+ *
+ *   bit_rotate_left(w, rot)     bit_rotl(w, rot)
+ *     - rotates all bits of w left by rot positions
+ *     - bits shifted off the MSB wrap to the LSB
+ *     - rot must be in [0, width(w)]
+ *     - rot == 0 or rot == width(w) returns w unchanged
+ *     - example: bit_rotl((uint8_t)0b10110001, 2) -> 0b11000110
+ *
+ *   bit_rotate_right(w, rot)    bit_rotr(w, rot)
+ *     - rotates all bits of w right by rot positions
+ *     - bits shifted off the LSB wrap to the MSB
+ *     - rot must be in [0, width(w)]
+ *     - rot == 0 or rot == width(w) returns w unchanged
+ *     - example: bit_rotr((uint8_t)0b10110001, 2) -> 0b01101100
+ *
+ *   bit_rotate_left_part(w, rot, cnt)    bit_rotlp(w, rot, cnt)
+ *     - rotates only the lowest cnt bits of w left by rot positions
+ *     - bits above position cnt are not changed
+ *     - rot must be in [1, cnt-1]; cnt must be in [2, width(w)-1]
+ *     - example: bit_rotlp((uint8_t)0b11000011, 1, 4) -> 0b11000110
+ *                                              ^^^^^ only these 4 bits rotate
+ *
+ *   bit_rotate_right_part(w, rot, cnt)   bit_rotrp(w, rot, cnt)
+ *     - rotates only the lowest cnt bits of w right by rot positions
+ *     - bits above position cnt are not changed
+ *     - rot must be in [1, cnt-1]; cnt must be in [2, width(w)-1]
+ *     - example: bit_rotrp((uint8_t)0b11000110, 1, 4) -> 0b11000011
+ *
+ *
+ * BIT SWAP MACROS
+ *
+ *   These macros swap a range of bits between two variables of the same type.
+ *   a and b are modified in place.
+ *   Both variables must have the same type (checked at compile time).
+ *
+ *   bit_swap(cnt, off, a, b)
+ *     - swaps cnt bits starting at bit position off between a and b
+ *     - requires cnt + off <= width(a)
+ *     - asserts at runtime if the constraint is violated
+ *     - example: swap 3 bits starting at bit 2
+ *                a = 0b11111111, b = 0b00000000
+ *                bit_swap(3, 2, a, b)
+ *                a = 0b11100011, b = 0b00011100
+ *
+ *   bit_swap_ls(cnt, a, b)
+ *     - swaps the cnt lowest bits between a and b (offset = 0)
+ *     - shorthand for bit_swap(cnt, 0, a, b)
+ *
+ *   bit_swap_ms(cnt, a, b)
+ *     - swaps the cnt highest bits between a and b
+ *     - shorthand for bit_swap(cnt, width(a)-cnt, a, b)
+ *
+ *
+ * TESTING
+ *
+ *   This library requires the Unity Test Framework and the PCG32 Random Number Generator.
+ *   You can run the tests in two ways:
+ *
+ *   Method 1: Standard Compilation
+ *
+ *     Compile the header while linking the source files for Unity and PCG32:
+ *
+ *       cc -DHUZLIB_BIT_IMPL -DHUZLIB_BIT_TEST -x c bit.h unity.c pcg32_basic.c -o bit_tests
+ *       ./bit_tests
+ *
+ *   Method 2: Using Single-Header Wrappers
+ *
+ *     Ensure your wrappers are in your include path so `bit.h` can find them.
+ *     Using single-header versions of Unity and PCG32, compile like this:
+ *
+ *       cc -DHUZLIB_BIT_IMPL -DHUZLIB_BIT_TEST -x c bit.h -o bit_tests
+ *       ./bit_tests
+ */
 #ifndef HUZLIB_BIT_H
 #define HUZLIB_BIT_H
 
@@ -16,7 +266,6 @@
  * Human(logn) search time for this particular ass ripping
  *
  * Order:
- *    defined(__NVCC__)
  *    defined(__INTEL_LLVM_COMPILER)
  *    defined(__INTEL_COMPILER)
  *    defined(__ARMCOMPILER_VERSION)
@@ -35,7 +284,6 @@
 
 #ifndef HUZLIB_INTERNAL_HAS_TYPEOF
 #if (                                           \
-   defined(__NVCC__) ||                         \
    defined(__INTEL_LLVM_COMPILER) ||            \
    defined(__INTEL_COMPILER) ||                 \
    defined(__ARMCOMPILER_VERSION) ||            \
@@ -180,16 +428,17 @@ typedef unsigned long long ullong;
    x(type, ceil, type w)                        \
    x(type, floor, type w)
 
-#define HUZLIB_BIT_INTERNAL_C2Y_PROTOS(type, x) \
-   x(type, rotate_left, type w, uint8_t r)      \
-   x(type, rotate_right, type w, uint8_t r)
+#define HUZLIB_BIT_INTERNAL_C2Y_PROTOS(type, x)    \
+   x(type, rotate_left, type w, unsigned int rot)  \
+   x(type, rotate_right, type w, unsigned int rot)
 
-#define HUZLIB_BIT_INTERNAL_LIB_PROTOS(type, x)             \
-   x(type, rotate_left_part, type w, uint8_t r, uint8_t m)  \
-   x(type, rotate_right_part, type w, uint8_t r, uint8_t m) \
+#define HUZLIB_BIT_INTERNAL_LIB_PROTOS(type, x)                            \
+   x(type, rotate_left_part, type w, unsigned int rot, unsigned int cnt)   \
+   x(type, rotate_right_part, type w, unsigned int rot, unsigned int cnt)
 
 
 #define HUZLIB_BIT_INTERNAL_TYPE_WIDTH(expr)                (sizeof(expr) * CHAR_BIT)
+#define HUZLIB_BIT_INTERNAL_TYPE_MAX(type)                  ((type)(-1))
 #define HUZLIB_BIT_INTERNAL_GENERIC_PROTO(type, func)       func##_##type
 
 #define HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED(type, ...)      _Static_assert((type)(-1) > 0, #type " is not unsigned");
@@ -392,6 +641,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
 #ifdef HUZLIB_BIT_IMPL
 
 
+#include <stdint.h>
 #include <stdlib.h>
 
 static inline unsigned int __bit_operation_not_found(void)
@@ -714,7 +964,7 @@ inline type bit_first_leading_one_##type(type w)                                
    if (w == 0)                                                                      \
       return 0;                                                                     \
    else                                                                             \
-      return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - (1 + bit_leading_zeros_##type(w)); \
+      return 1 + bit_leading_zeros_##type(w);                                       \
 }
 
 
@@ -723,8 +973,13 @@ inline type bit_first_leading_one_##type(type w)                                
  *    - __clz[,ll]
  *    - __popc[,ll]
  *    - __ffs[,ll]
+ *
+ * WARN: This shit needs to be in C++ mode to compile...
+ * Since C++ already has <bit> header... useless
+ *
+ * WARN: [[depreciated]]
  */
-#if defined(__NVCC__)
+#if defined(__NVCC__) && defined(__CUDA_ARCH__) && 0
    #include <cuda_runtime.h>
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)       \
@@ -789,6 +1044,9 @@ inline type bit_first_leading_one_##type(type w)                                
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)  HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
 
+_Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
+#endif
+
 
 /*
  * GCC/Clang/Intel/ARMCLANG/OpenXL:
@@ -797,7 +1055,7 @@ inline type bit_first_leading_one_##type(type w)                                
  *    - __builtin_popcount[,l,ll]
  *    - __builtin_ffs[,l,ll]
  */
-#elif defined(__INTEL_LLVM_COMPILER) || (defined(__INTEL_COMPILER) && defined(__GNUC__)) || (defined(__ARMCOMPILER_VERSION) && __ARMCOMPILER_VERSION >= 600000) || (defined(__ibmxl__) && __ibmxl__ >= 0x10010000) || (defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4))) || defined(__clang__)
+#if defined(__INTEL_LLVM_COMPILER) || (defined(__INTEL_COMPILER) && defined(__GNUC__)) || (defined(__ARMCOMPILER_VERSION) && __ARMCOMPILER_VERSION >= 600000) || (defined(__ibmxl__) && __ibmxl__ >= 0x10010000) || (defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4))) || defined(__clang__)
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)                                     \
    inline type bit_trailing_zeros_##type(type w)                                                            \
@@ -1119,28 +1377,31 @@ inline type bit_first_leading_one_##type(type w)                                
 #endif
 
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_WIDTH(type, ...)                               \
-inline type bit_width_##type(type w)                                                      \
-{                                                                                         \
-   return (w == 0)                                                                        \
-      ? 0                                                                                 \
-      : HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - bit_leading_zeros_##type(w);                  \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_WIDTH(type, ...)                                     \
+inline type bit_width_##type(type w)                                                            \
+{                                                                                               \
+   if (w == 0)                                                                                  \
+      return 0;                                                                                 \
+   else                                                                                         \
+      return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - bit_leading_zeros_##type(w);                   \
 }
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_CEIL(type, ...)                                \
-inline type bit_ceil_##type(type w)                                                       \
-{                                                                                         \
-   return (w == 0)                                                                        \
-      ? 1                                                                                 \
-      :(1ull << (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - bit_leading_zeros_##type(w - 1)));   \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_CEIL(type, ...)                                      \
+inline type bit_ceil_##type(type w)                                                             \
+{                                                                                               \
+   if (w == 0)                                                                                  \
+      return 1;                                                                                 \
+   else                                                                                         \
+      return (1ull << (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - bit_leading_zeros_##type(w - 1)));   \
 }
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR(type, ...)                               \
-inline type bit_floor_##type(type w)                                                      \
-{                                                                                         \
-   return (w == 0)                                                                        \
-      ? 0                                                                                 \
-      : (1ull << (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - 1 - bit_leading_zeros_##type(w)));  \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR(type, ...)                                     \
+inline type bit_floor_##type(type w)                                                            \
+{                                                                                               \
+   if (w == 0)                                                                                  \
+      return 0;                                                                                 \
+   else                                                                                         \
+      return (1ull << (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - 1 - bit_leading_zeros_##type(w)));   \
 }
 
 HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS, _)
@@ -1166,7 +1427,6 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
 
 #if !((__STDC_VERSION__ > 202311L) || (defined(__GNUC__) && (__GNUC__ >= 15)) || ((defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__)) && (__clang_major__ >= 23)))
 
-/* ------- NEW ------------- */
 
 #define HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot) (((w) << (rot)) | ((w) >> (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - (rot))))
 #define HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot) (((w) >> (rot)) | ((w) << (HUZLIB_BIT_INTERNAL_TYPE_WIDTH(w) - (rot))))
@@ -1250,7 +1510,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    #if defined(_WIN64) || defined(_M_X64) || defined(_M_AMD64) || defined(__x86_64__) || defined(__amd64__)
 
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)          \
-      inline type bit_rotate_left_##type(type w, uint8_t rot)                    \
+      inline type bit_rotate_left_##type(type w, unsigned int rot)               \
       {                                                                          \
          assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
          type ret;                                                               \
@@ -1267,7 +1527,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       }
 
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)         \
-      inline type bit_rotate_right_##type(type w, uint8_t rot)                   \
+      inline type bit_rotate_right_##type(type w, unsigned int rot)              \
       {                                                                          \
          assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
          type ret;                                                               \
@@ -1286,7 +1546,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    #else
 
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)          \
-      inline type bit_rotate_left_##type(type w, uint8_t rot)                    \
+      inline type bit_rotate_left_##type(type w, unsigned int rot)               \
       {                                                                          \
          assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
          type ret;                                                               \
@@ -1302,7 +1562,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       }
 
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)         \
-      inline type bit_rotate_right_##type(type w, uint8_t rot)                   \
+      inline type bit_rotate_right_##type(type w, unsigned int rot)              \
       {                                                                          \
          assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
          type ret;                                                               \
@@ -1332,7 +1592,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)             \
-   inline type bit_rotate_left_##type(type w, uint8_t rot)                       \
+   inline type bit_rotate_left_##type(type w, unsigned int rot)                  \
    {                                                                             \
       assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
       type ret;                                                                  \
@@ -1347,7 +1607,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)            \
-   inline type bit_rotate_right_##type(type w, uint8_t rot)                      \
+   inline type bit_rotate_right_##type(type w, unsigned int rot)                 \
    {                                                                             \
       assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
       type ret;                                                                  \
@@ -1364,14 +1624,14 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
 #else
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)             \
-   inline type bit_rotate_left_##type(type w, uint8_t rot)                       \
+   inline type bit_rotate_left_##type(type w, unsigned int rot)                  \
    {                                                                             \
       assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
       return HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);                               \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)            \
-   inline type bit_rotate_right_##type(type w, uint8_t rot)                      \
+   inline type bit_rotate_right_##type(type w, unsigned int rot)                 \
    {                                                                             \
       assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
       return HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);                               \
@@ -1389,34 +1649,34 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT, _)
 
 
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART(type, ...)           \
-inline type bit_rotate_left_part_##type(type w, uint8_t r, uint8_t m)            \
-{                                                                                \
-   assert(r < m && m < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-   if (r == 0 || m == 0)                                                         \
-      return w;                                                                  \
-                                                                                 \
-   type mask = ((type)1 << m) - 1;                                               \
-   type part = w & mask;                                                         \
-   type high = w & ~mask;                                                        \
-                                                                                 \
-   type rotated = (type)((part << r) | (part >> (m - r))) & mask;                \
-   return high | rotated;                                                        \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART(type, ...)                 \
+inline type bit_rotate_left_part_##type(type w, unsigned int rot, unsigned int cnt)    \
+{                                                                                      \
+   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
+   if (rot == 0 || cnt == 0)                                                           \
+      return w;                                                                        \
+                                                                                       \
+   type mask = ((type)1 << cnt) - 1;                                                   \
+   type part = w & mask;                                                               \
+   type high = w & ~mask;                                                              \
+                                                                                       \
+   type rotated = (type)((part << rot) | (part >> (cnt - rot))) & mask;                \
+   return high | rotated;                                                              \
 }
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART(type, ...)          \
-inline type bit_rotate_right_part_##type(type w, uint8_t r, uint8_t m)           \
-{                                                                                \
-   assert(r < m && m < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-   if (r == 0 || m == 0)                                                         \
-      return w;                                                                  \
-                                                                                 \
-   type mask = ((type)1 << m) - 1;                                               \
-   type part = w & mask;                                                         \
-   type high = w & ~mask;                                                        \
-                                                                                 \
-   type rotated = (type)((part >> r) | (part << (m - r))) & mask;                \
-   return high | rotated;                                                        \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART(type, ...)                \
+inline type bit_rotate_right_part_##type(type w, unsigned int rot, unsigned int cnt)   \
+{                                                                                      \
+   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
+   if (rot == 0 || cnt == 0)                                                           \
+      return w;                                                                        \
+                                                                                       \
+   type mask = ((type)1 << cnt) - 1;                                                   \
+   type part = w & mask;                                                               \
+   type high = w & ~mask;                                                              \
+                                                                                       \
+   type rotated = (type)((part >> rot) | (part << (cnt - rot))) & mask;                \
+   return high | rotated;                                                              \
 }
 
 HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART, _)
@@ -1441,72 +1701,715 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART, 
 #define UNITY_FRAMEWORK_SINGLE_HEADER_WRAPPER_IMPL
 #include "unity.h"
 
+#define PCG_BASIC_SINGLE_HEADER_WRAPPER_IMPL
+#include "pcg.h"
+
+
 void setUp(void) {}
 void tearDown(void) {}
 
 #define HUZLIB_BIT_INTERNAL_TEST_TYPES(x, ...)  \
+   x(uchar, __VA_ARGS__)                        \
+   x(ushort, __VA_ARGS__)                       \
+   x(uint, __VA_ARGS__)                         \
+   x(ulong, __VA_ARGS__)                        \
+   x(ullong, __VA_ARGS__)                       \
+   x(unsigned, __VA_ARGS__)                     \
    x(uint8_t, __VA_ARGS__)                      \
    x(uint16_t, __VA_ARGS__)                     \
    x(uint32_t, __VA_ARGS__)                     \
    x(uint64_t, __VA_ARGS__)                     \
    x(size_t, __VA_ARGS__)                       \
-   x(uintptr_t, __VA_ARGS__)                    \
-   x(unsigned, __VA_ARGS__)                     \
-   x(uchar, __VA_ARGS__)                        \
-   x(ushort, __VA_ARGS__)                       \
-   x(uint, __VA_ARGS__)                         \
-   x(ulong, __VA_ARGS__)                        \
-   x(ullong, __VA_ARGS__)
+   x(uintptr_t, __VA_ARGS__)
 
 
-#define HUZLIB_GENERATE_CTZ_TEST(type, ...)                 \
-static void test_bit_ctz_##type(void)                       \
-{                                                           \
-   size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);     \
-   for (type i = 0; i < WIDTH; i++)                         \
-   {                                                        \
-      type w = (type)1 << i;                                \
-      TEST_ASSERT_EQUAL(i, bit_ctz(w));                     \
-   }                                                        \
-   for (type i = 0; i < WIDTH - 1; i++)                     \
-   {                                                        \
-      type w = ((type)1 << i) | ((type)1 << (i + 1));       \
-      TEST_ASSERT_EQUAL(i, bit_ctz(w));                     \
-   }                                                        \
-   TEST_ASSERT_EQUAL(WIDTH, bit_ctz((type)0));              \
+#define HUZLIB_GENERATE_CTZ_FFS_TEST(type, ...)                      \
+static void test_bit_ctz_ffs_##type(void)                            \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* power of 2 sweep */                                            \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (type i = 0; i < WIDTH; i++)                               \
+      {                                                              \
+         type x = ((type)1 << i);                                    \
+         if (k > 0 && i + k < WIDTH)                                 \
+            x |= (type)1 << (i + k);                                 \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & 1) == 0)                                   \
+         {                                                           \
+            n >>= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type res = bit_ctz(x);                                      \
+         TEST_ASSERT_EQUAL(count, res);                              \
+                                                                     \
+         res = bit_ffs(x);                                           \
+         TEST_ASSERT_EQUAL(count + 1, res);                          \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & 1) == 0)                                      \
+      {                                                              \
+         n >>= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type res = bit_ctz(x);                                         \
+      TEST_ASSERT_EQUAL(count, res);                                 \
+                                                                     \
+      res = bit_ffs(x);                                              \
+      TEST_ASSERT_EQUAL(count + 1, res);                             \
+   }                                                                 \
 }
 
-#define HUZLIB_GENERATE_CLZ_TEST(type, ...)                 \
-static void test_bit_clz_##type(void)                       \
-{                                                           \
-   size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);     \
-   for (type i = 0; i < WIDTH; i++)                         \
-   {                                                        \
-      type w = (type)1 << i;                                \
-      TEST_ASSERT_EQUAL((WIDTH - i - 1), bit_clz(w));       \
-   }                                                        \
-   for (type i = 0; i < WIDTH; i++)                         \
-   {                                                        \
-      type w = ((type)1 << i) | ((type)1 << (i / 2));       \
-      TEST_ASSERT_EQUAL((WIDTH - i - 1), bit_clz(w));       \
-   }                                                        \
-   TEST_ASSERT_EQUAL(WIDTH, bit_clz((type)0));              \
+#define HUZLIB_GENERATE_CTO_FFSZ_TEST(type, ...)                     \
+static void test_bit_cto_ffsz_##type(void)                           \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* power of 2 sweep */                                            \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (type i = 0; i < WIDTH; i++)                               \
+      {                                                              \
+         type x = ((type)1 << i) - 1; /* lower i bits set */         \
+         if (k > 0 && i + k + 1 < WIDTH)                             \
+            x |= ((type)1 << (i + k + 1));                           \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n & 1)                                               \
+         {                                                           \
+            n >>= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type res = bit_cto(x);                                      \
+         TEST_ASSERT_EQUAL(count, res);                              \
+                                                                     \
+         res = bit_ffsz(x);                                          \
+         TEST_ASSERT_EQUAL(count + 1, res);                          \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n & 1)                                                  \
+      {                                                              \
+         n >>= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type res = bit_cto(x);                                         \
+      TEST_ASSERT_EQUAL(count, res);                                 \
+                                                                     \
+      res = bit_ffsz(x);                                             \
+      TEST_ASSERT_EQUAL(count + 1, res);                             \
+   }                                                                 \
 }
 
+#define HUZLIB_GENERATE_CLZ_FLS_TEST(type, ...)                      \
+static void test_bit_clz_fls_##type(void)                            \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* power of 2 sweep */                                            \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (type i = 0; i < WIDTH; i++)                               \
+      {                                                              \
+         type x = ((type)1 << i);                                    \
+         if (k > 0 && i - k < WIDTH)                                 \
+            x |= (type)1 << (i - k);                                 \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & ((type)1 << (WIDTH - 1))) == 0)            \
+         {                                                           \
+            n <<= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type res = bit_clz(x);                                      \
+         TEST_ASSERT_EQUAL(count, res);                              \
+                                                                     \
+         res = bit_fls(x);                                           \
+         TEST_ASSERT_EQUAL(count + 1, res);                          \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & ((type)1 << (WIDTH - 1))) == 0)               \
+      {                                                              \
+         n <<= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type res = bit_clz(x);                                         \
+      TEST_ASSERT_EQUAL(count, res);                                 \
+                                                                     \
+      res = bit_fls(x);                                              \
+      TEST_ASSERT_EQUAL(count + 1, res);                             \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_CLO_FLSZ_TEST(type, ...)                     \
+static void test_bit_clo_flsz_##type(void)                           \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* power of 2 sweep */                                            \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (type i = 0; i < WIDTH; i++)                               \
+      {                                                              \
+         type x = ~(((type)1 << i) - 1); /* higher i bits set */     \
+         if (k > 0 && i - k - 1 < WIDTH)                             \
+            x |= ((type)1 << (i - k - 1));                           \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & ((type)1 << (WIDTH - 1))))                 \
+         {                                                           \
+            n <<= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type res = bit_clo(x);                                      \
+         TEST_ASSERT_EQUAL(count, res);                              \
+                                                                     \
+         res = bit_flsz(x);                                          \
+         if (x == (type)(-1))                                        \
+            TEST_ASSERT_EQUAL(0, res);                               \
+         else                                                        \
+            TEST_ASSERT_EQUAL(count + 1, res);                       \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & ((type)1 << (WIDTH - 1))))                    \
+      {                                                              \
+         n <<= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type res = bit_clo(x);                                         \
+      TEST_ASSERT_EQUAL(count, res);                                 \
+                                                                     \
+      res = bit_flsz(x);                                             \
+      if (x == (type)(-1))                                           \
+         TEST_ASSERT_EQUAL(0, res);                                  \
+      else                                                           \
+         TEST_ASSERT_EQUAL(count + 1, res);                          \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_POPC_POPCZ_TEST(type, ...)                   \
+static void test_bit_popc_popcz_##type(void)                         \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* power of 2 sweep */                                            \
+   for (unsigned int k = 1; k < 6; k += 2)                           \
+   {                                                                 \
+      for (type i = 0; i < WIDTH; i++)                               \
+      {                                                              \
+         type x = ((type)6 << i);                                    \
+         if (k > 0 && i + k < WIDTH)                                 \
+            x |= (type)1 << (i + k);                                 \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n > 0)                                               \
+         {                                                           \
+            n &= (n - 1);                                            \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type res = bit_popc(x);                                     \
+         TEST_ASSERT_EQUAL(count, res);                              \
+                                                                     \
+         res = bit_popcz(x);                                         \
+         TEST_ASSERT_EQUAL(WIDTH - count, res);                      \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n > 0)                                                  \
+      {                                                              \
+         n &= (n - 1);                                               \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type res = bit_popc(x);                                        \
+      TEST_ASSERT_EQUAL(count, res);                                 \
+                                                                     \
+      res = bit_popcz(x);                                            \
+      TEST_ASSERT_EQUAL(WIDTH - count, res);                         \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_WIDTH_TEST(type, ...)                        \
+static void test_bit_width_##type(void)                              \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* structural sweep: single bit at each position, plus noise */   \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         type x = (type)1 << i;                                      \
+         if (k > 0 && i >= k)                                        \
+            x |= (type)1 << (i - k);  /* noise below MSB */          \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & ((type)1 << (WIDTH - 1))) == 0)            \
+         {                                                           \
+            n <<= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type expect = (x == 0) ? 0 : WIDTH - count;                 \
+         type res = bit_width(x);                                    \
+         TEST_ASSERT_EQUAL(expect, res);                             \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* boundary: zero and all-ones */                                 \
+   TEST_ASSERT_EQUAL(0,     bit_width((type)0));                     \
+   TEST_ASSERT_EQUAL(WIDTH, bit_width((type)~(type)0));              \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & ((type)1 << (WIDTH - 1))) == 0)               \
+      {                                                              \
+         n <<= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type expect = (x == 0) ? 0 : WIDTH - count;                    \
+      type res = bit_width(x);                                       \
+      TEST_ASSERT_EQUAL(expect, res);                                \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_CEIL_TEST(type, ...)                         \
+static void test_bit_ceil_##type(void)                               \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* structural sweep — stay below MSB to avoid overflow */         \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH - 1; i++)                   \
+      {                                                              \
+         type x = (type)1 << i;                                      \
+         if (k > 0 && i >= k)                                        \
+            x |= (type)1 << (i - k);                                 \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & ((type)1 << (WIDTH - 1))) == 0)            \
+         {                                                           \
+            n <<= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type expect = (x == 0)                                      \
+            ? 1                                                      \
+            : ((x & (x - 1)) == 0)                                   \
+               ? (type)1 << (WIDTH - 1 - count)                      \
+               : (type)1 << (WIDTH - count);                         \
+         TEST_ASSERT_EQUAL(expect, bit_ceil(x));                     \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* boundaries */                                                  \
+   TEST_ASSERT_EQUAL((type)1, bit_ceil((type)0));                    \
+   TEST_ASSERT_EQUAL((type)1, bit_ceil((type)1));                    \
+   TEST_ASSERT_EQUAL(1ull << (WIDTH - 1),                            \
+      bit_ceil((type)(1ull << (WIDTH - 1))));                        \
+                                                                     \
+   /* random sweep — clamp to avoid overflow */                      \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)(pcg32_random_r(&rng) & ((type)~(type)0 >> 1)); \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & ((type)1 << (WIDTH - 1))) == 0)               \
+      {                                                              \
+         n <<= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type expect = (x == 0)                                         \
+         ? 1                                                         \
+         : ((x & (x - 1)) == 0)                                      \
+            ? (type)1 << (WIDTH - 1 - count)                         \
+            : (type)1 << (WIDTH - count);                            \
+      TEST_ASSERT_EQUAL(expect, bit_ceil(x));                        \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_FLOOR_TEST(type, ...)                        \
+static void test_bit_floor_##type(void)                              \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* structural sweep */                                            \
+   for (unsigned int k = 0; k < 3; k++)                              \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         type x = (type)1 << i;                                      \
+         if (k > 0 && i >= k)                                        \
+            x |= (type)1 << (i - k);                                 \
+                                                                     \
+         type n = x, count = 0;                                      \
+         while (n && (n & ((type)1 << (WIDTH - 1))) == 0)            \
+         {                                                           \
+            n <<= 1;                                                 \
+            count++;                                                 \
+         }                                                           \
+                                                                     \
+         type expect = (x == 0)                                      \
+            ? 0                                                      \
+            : (type)1 << (WIDTH - 1 - count);                        \
+         TEST_ASSERT_EQUAL(expect, bit_floor(x));                    \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* boundaries */                                                  \
+   TEST_ASSERT_EQUAL((type)0, bit_floor((type)0));                   \
+   TEST_ASSERT_EQUAL(1ull << (WIDTH - 1), bit_floor((type)~0ull));   \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+                                                                     \
+      type n = x, count = 0;                                         \
+      while (n && (n & ((type)1 << (WIDTH - 1))) == 0)               \
+      {                                                              \
+         n <<= 1;                                                    \
+         count++;                                                    \
+      }                                                              \
+                                                                     \
+      type expect = (x == 0)                                         \
+         ? 0                                                         \
+         : (type)1 << (WIDTH - 1 - count);                           \
+      TEST_ASSERT_EQUAL(expect, bit_floor(x));                       \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_ROTL_TEST(type, ...)                         \
+static void test_bit_rotl_##type(void)                               \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* boundary: identity cases */                                    \
+   TEST_ASSERT_EQUAL((type)0,    bit_rotl((type)0,    0));           \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotl((type)(-1), 0));           \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotl((type)(-1), WIDTH));       \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotl((type)(-1), WIDTH / 2));   \
+                                                                     \
+   /* single-bit sweep: bit i rotated by rot */                      \
+   for (unsigned int rot = 0; rot <= WIDTH; rot++)                   \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         type x = (type)1 << i;                                      \
+                                                                     \
+         type expect = (rot == 0 || rot == WIDTH)                    \
+            ? x                                                      \
+            : (type)1 << ((i + rot) % WIDTH);                        \
+         TEST_ASSERT_EQUAL(expect, bit_rotl(x, rot));                \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* two-bit noise sweep: result is OR of rotated bits */           \
+   for (unsigned int rot = 1; rot < WIDTH; rot++)                    \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         unsigned int j = (i + WIDTH / 2) % WIDTH;                   \
+         type x = ((type)1 << i) | ((type)1 << j);                   \
+                                                                     \
+         type expect = ((type)1 << ((i + rot) % WIDTH))              \
+            | ((type)1 << ((j + rot) % WIDTH));                      \
+         TEST_ASSERT_EQUAL(expect, bit_rotl(x, rot));                \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* round-trip: rotr(rotl(x, rot), rot) == x */                    \
+   for (unsigned int rot = 0; rot <= WIDTH; rot++)                   \
+   {                                                                 \
+      type x = (type)0xA5;                                           \
+      TEST_ASSERT_EQUAL(x, bit_rotr(bit_rotl(x, rot), rot));         \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+      unsigned int rot = pcg32_boundedrand_r(&rng, WIDTH + 1);       \
+                                                                     \
+      type expect = (rot == 0 || rot == WIDTH)                       \
+         ? x                                                         \
+         : (type)((x << rot) | (x >> (WIDTH - rot)));                \
+      TEST_ASSERT_EQUAL(expect, bit_rotl(x, rot));                   \
+   }                                                                 \
+}
+ 
+ 
+#define HUZLIB_GENERATE_ROTR_TEST(type, ...)                         \
+static void test_bit_rotr_##type(void)                               \
+{                                                                    \
+   const size_t WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);        \
+                                                                     \
+   /* boundary: identity cases */                                    \
+   TEST_ASSERT_EQUAL((type)0,    bit_rotr((type)0,    0));           \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotr((type)(-1), 0));           \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotr((type)(-1), WIDTH));       \
+   TEST_ASSERT_EQUAL((type)(-1), bit_rotr((type)(-1), WIDTH / 2));   \
+                                                                     \
+   /* single-bit sweep: bit i rotated right by rot */                \
+   for (unsigned int rot = 0; rot <= WIDTH; rot++)                   \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         type x = (type)1 << i;                                      \
+                                                                     \
+         type expect = (rot == 0 || rot == WIDTH)                    \
+            ? x                                                      \
+            : (type)1 << ((i + WIDTH - rot) % WIDTH);                \
+         TEST_ASSERT_EQUAL(expect, bit_rotr(x, rot));                \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* two-bit noise sweep */                                         \
+   for (unsigned int rot = 1; rot < WIDTH; rot++)                    \
+   {                                                                 \
+      for (unsigned int i = 0; i < WIDTH; i++)                       \
+      {                                                              \
+         unsigned int j = (i + WIDTH / 2) % WIDTH;                   \
+         type x = ((type)1 << i) | ((type)1 << j);                   \
+                                                                     \
+         type expect = ((type)1 << ((i + WIDTH - rot) % WIDTH))      \
+            | ((type)1 << ((j + WIDTH - rot) % WIDTH));              \
+         TEST_ASSERT_EQUAL(expect, bit_rotr(x, rot));                \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* round-trip: rotl(rotr(x, rot), rot) == x */                    \
+   for (unsigned int rot = 0; rot <= WIDTH; rot++)                   \
+   {                                                                 \
+      type x = (type)0xA5;                                           \
+      TEST_ASSERT_EQUAL(x, bit_rotl(bit_rotr(x, rot), rot));         \
+   }                                                                 \
+                                                                     \
+   /* random sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < (WIDTH << 3); k++)                   \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+      unsigned int rot = pcg32_boundedrand_r(&rng, WIDTH + 1);       \
+                                                                     \
+      type expect = (rot == 0 || rot == WIDTH)                       \
+         ? x                                                         \
+         : (type)((x >> rot) | (x << (WIDTH - rot)));                \
+      TEST_ASSERT_EQUAL(expect, bit_rotr(x, rot));                   \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_ROTLP_TEST(type, ...)                        \
+static void test_bit_rotlp_##type(void)                              \
+{                                                                    \
+   const size_t MAX_WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);    \
+                                                                     \
+   /* structural sweep */                                            \
+   for (unsigned int cnt = 2; cnt < MAX_WIDTH; cnt++)                \
+   {                                                                 \
+      type mask = ((type)1 << cnt) - 1;                              \
+      for (unsigned int rot = 0; rot < cnt; rot++)                   \
+      {                                                              \
+         for (unsigned int bit = 0; bit < cnt; bit++)                \
+         {                                                           \
+            type x = (type)1 << bit;                                 \
+            unsigned int expected_bit = (bit + rot) % cnt;           \
+            type expect = (type)1 << expected_bit;                   \
+                                                                     \
+            TEST_ASSERT_EQUAL_HEX(expect, bit_rotlp(x, rot, cnt));   \
+         }                                                           \
+                                                                     \
+         /* 2. Test High-Bit Isolation */                            \
+         type high_bit = (type)1 << (MAX_WIDTH - 1);                 \
+         type res = bit_rotlp(high_bit, rot, cnt);                   \
+         TEST_ASSERT_BITS_HIGH(high_bit, res);                       \
+         TEST_ASSERT_EQUAL_HEX(0, res & mask);                       \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* Random Sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 42u, 54u);                                  \
+   for (unsigned int k = 0; k < 100; k++)                            \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+      unsigned int cnt = pcg32_boundedrand_r(&rng, MAX_WIDTH-2) + 2; \
+      unsigned int rot = pcg32_boundedrand_r(&rng, cnt);             \
+                                                                     \
+      type mask = ((type)1 << cnt) - 1;                              \
+      type high_before = x & ~mask;                                  \
+      type result = bit_rotlp(x, rot, cnt);                          \
+                                                                     \
+      /* 1. Verify high bits remained untouched */                   \
+      TEST_ASSERT_EQUAL(high_before, result & ~mask);                \
+                                                                     \
+      /* 2. Verify identity if rot is 0 */                           \
+      TEST_ASSERT_EQUAL(x, bit_rotlp(x, 0, cnt));                    \
+   }                                                                 \
+}
+
+#define HUZLIB_GENERATE_ROTRP_TEST(type, ...)                        \
+static void test_bit_rotrp_##type(void)                              \
+{                                                                    \
+   const size_t MAX_WIDTH = HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);    \
+                                                                     \
+   /* structural sweep */                                            \
+   for (unsigned int cnt = 2; cnt < MAX_WIDTH; cnt++)                \
+   {                                                                 \
+      type mask = ((type)1 << cnt) - 1;                              \
+      for (unsigned int rot = 0; rot < cnt; rot++)                   \
+      {                                                              \
+         for (unsigned int bit = 0; bit < cnt; bit++)                \
+         {                                                           \
+            type x = (type)1 << bit;                                 \
+            unsigned int expected_bit = (bit + cnt - rot) % cnt;     \
+            type expect = (type)1 << expected_bit;                   \
+                                                                     \
+            TEST_ASSERT_EQUAL_HEX(expect, bit_rotrp(x, rot, cnt));   \
+         }                                                           \
+                                                                     \
+         /* 2. Test High-Bit Isolation */                            \
+         type high_bit = (type)1 << (MAX_WIDTH - 1);                 \
+         type res = bit_rotrp(high_bit, rot, cnt);                   \
+         TEST_ASSERT_BITS_HIGH(high_bit, res);                       \
+         TEST_ASSERT_EQUAL_HEX(0, res & mask);                       \
+      }                                                              \
+   }                                                                 \
+                                                                     \
+   /* Random Sweep */                                                \
+   pcg32_random_t rng;                                               \
+   pcg32_srandom_r(&rng, 1337u, 88u);                                \
+   for (unsigned int k = 0; k < 100; k++)                            \
+   {                                                                 \
+      type x = (type)pcg32_random_r(&rng);                           \
+      unsigned int cnt = pcg32_boundedrand_r(&rng, MAX_WIDTH-2) + 2; \
+      unsigned int rot = pcg32_boundedrand_r(&rng, cnt);             \
+                                                                     \
+      type mask = ((type)1 << cnt) - 1;                              \
+      type high_before = x & ~mask;                                  \
+      type result = bit_rotrp(x, rot, cnt);                          \
+                                                                     \
+      /* Verify high bits remained untouched */                      \
+      TEST_ASSERT_EQUAL(high_before, result & ~mask);                \
+                                                                     \
+      /* Verify identity if rot is 0 */                              \
+      TEST_ASSERT_EQUAL(x, bit_rotrp(x, 0, cnt));                    \
+                                                                     \
+      if (rot > 0)                                                   \
+         TEST_ASSERT_EQUAL(bit_rotlp(x, cnt - rot, cnt), result);    \
+   }                                                                 \
+}
 
 HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED, _)
-HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CTZ_TEST, _)
-HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CLZ_TEST, _)
+
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CTZ_FFS_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CTO_FFSZ_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CLZ_FLS_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CLO_FLSZ_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_POPC_POPCZ_TEST, _)
+
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_WIDTH_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_CEIL_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_FLOOR_TEST, _)
+
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_ROTL_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_ROTR_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_ROTLP_TEST, _)
+HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_GENERATE_ROTRP_TEST, _)
 
 
 #define HUZLIB_BIT_RUN_TEST(type, func, ...)  RUN_TEST(func##_##type);
 
 int main()
 {
-   UnityBegin("test/bit.h");
+   UnityBegin("test/bit.h ");
 
-   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_ctz)
-   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_clz)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_ctz_ffs)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_cto_ffsz)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_clz_fls)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_clo_flsz)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_popc_popcz)
+
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_width)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_ceil)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_floor)
+
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_rotl)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_rotr)
+
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_rotlp)
+   HUZLIB_BIT_INTERNAL_TEST_TYPES(HUZLIB_BIT_RUN_TEST, test_bit_rotrp)
 
    return UnityEnd();
 }

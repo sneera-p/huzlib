@@ -16,7 +16,6 @@
  * Human(logn) search time for this particular ass ripping
  *
  * Order:
- *    defined(__NVCC__)
  *    defined(__INTEL_LLVM_COMPILER)
  *    defined(__INTEL_COMPILER)
  *    defined(__ARMCOMPILER_VERSION)
@@ -35,7 +34,6 @@
 
 #ifndef HUZLIB_INTERNAL_HAS_TYPEOF
 #if (                                           \
-   defined(__NVCC__) ||                         \
    defined(__INTEL_LLVM_COMPILER) ||            \
    defined(__INTEL_COMPILER) ||                 \
    defined(__ARMCOMPILER_VERSION) ||            \
@@ -75,7 +73,6 @@
 
 #ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
 #if (                                  \
-   defined(__NVCC__) ||                \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
    defined(__ARMCOMPILER_VERSION) ||   \

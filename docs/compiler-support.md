@@ -18,13 +18,13 @@ tools ```__typeof__(x) / __decltype(x) ``` and ```_Generic(x, ...)```
 | **Pelles C**                 | 8.0+                         | 2015   |
 | **Sun/Oracle Studio**        | 12.4+                        | 2014   |
 | **IBM XL C**                 | 13.1+                        | 2013   |
-| **NVCC (CUDA)**              | 9.0+                         | 2017   |
 | **Zig CC**                   | 0.10.0+                      | 2022   |
 
 ## ⚠️ Not Supported
 
 | Compiler                    | Reason                                    |
 |-----------------------------|-------------------------------------------|
+| **NVCC (CUDA)**             | C++ only                                  |
 | **ARMCC**                   | No `_Generic` support                     |
 | **DJGPP**                   | Stuck at GCC 2.95                         |
 | **IAR Embedded**            | C99 only in C mode                        |
