@@ -261,17 +261,30 @@
 
 /*
  * __requal_expr(ptr, type, expr)
- * ----------------------------
+ * --------------------------------
  * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
  *
- * WARNING::
- * const volatile pointers will match the const branch, returning 
- * const type *, with volatile silently dropped. Since const volatile is
- * very rarely used, this shouldn't be a major issue ig??
+ * Branch order is intentional: volatile is checked before const so that
+ * const volatile pointers match the volatile branch, returning volatile type *
+ * with const silently dropped.
+ *
+ * This is the safer default for const volatile because:
+ *   - volatile drop: silently causes missed hardware reads/writes, a library bug
+ *   - const drop:    programmer may write through the pointer, a programmer error
+ *                    the compiler may still catch via other diagnostics
+ *
+ * const volatile is almost exclusively used on memory-mapped hardware registers
+ * which are inherently writable, so dropping const is less dangerous in practice.
+ *
+ * NOTE: To preserve const instead of volatile for const volatile pointers,
+ * move the const branch above the volatile branch.
+ *
+ * WARNING:
+ * This macro is the internal implementation and should not be used directly.
  */
 #define __requal_expr(ptr, type, expr) _Generic((ptr),               \
-   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
    volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
+   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
    default:                   ((type *)(expr))                       \
 )
 
