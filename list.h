@@ -168,28 +168,63 @@
 #if (__STDC_VERSION__ <= 202311L) && !defined(container_of)
 
 /*
+ * __container_of_raw(ptr, type, member)
+ * --------------------------------------
+ * Computes a pointer to the containing structure by subtracting the offset
+ * of member from ptr. No type checking is performed.
+ *
  * WARNING:
  * This macro is the internal implementation and should not be used directly.
- * Use container_of() instead which provides type checking when available.
  */
-#define __container_of(ptr, type, member) \
-   ((type *)((char*)(ptr) - offsetof(type, member)))
+#define __container_of_raw(ptr, type, member) \
+   ((type *)((char *)(ptr) - offsetof(type, member)))
 
 
+/*
+ * __container_of_unqual(ptr, type, member)
+ * -----------------------------------------
+ * Type-checked wrapper around __container_of_raw() that verifies ptr points
+ * to the correct member type before performing the offset arithmetic.
+ *
+ * Returns a bare type * with no CV-qualifiers preserved. Use container_of()
+ * which wraps this with __requal_expr() to restore qualifiers on the result.
+ *
+ * WARNING:
+ * This macro is the internal implementation and should not be used directly.
+ */
 #if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-   #define __container_of_concat(a, b) a##b
-   #define container_of(ptr, type, member) __extension__ ({ \
-      typeof(((type *)0)->member) *__mcumptr = (ptr);       \
-      __container_of(__mcumptr, type, member);              \
+   #define __container_of_unqual(ptr, type, member) __extension__ ({ \
+      typeof(((type *)0)->member) *__mcumptr = (ptr);                \
+      __container_of_raw(__mcumptr, type, member);                   \
    })
 
 #else
-   #define container_of(ptr, type, member) typecheck_expr(  \
-      typeof(((type *)0)->member) *, (ptr),                 \
-      __container_of(ptr, type, member)                     \
+   #define __container_of_unqual(ptr, type, member) typecheck_expr(  \
+      typeof(((type *)0)->member), *(ptr),                           \
+      __container_of_raw(ptr, type, member)                          \
    )
 
 #endif
+
+/*
+ * __requal_expr(ptr, type, expr)
+ * ----------------------------
+ * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
+ *
+ * WARNING::
+ * const volatile pointers will match the const branch, returning 
+ * const type *, with volatile silently dropped. Since const volatile is
+ * very rarely used, this shouldn't be a major issue ig??
+ */
+#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
+   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
+   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
+   default:                   ((type *)(expr))                       \
+)
+
+#define container_of(ptr, type, member) \
+   __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))
+
 #endif /* container_of */
 
 
@@ -215,6 +250,91 @@
    b = __huzuq(__tmp);              \
 } while (0)
 #endif
+
+
+
+
+/* --------------------------------------------------------------------------- */
+/* ------------------------------ utils/hints.h ------------------------------ */
+/* --------------------------------------------------------------------------- */
+
+
+/*
+ * __huzlib_inline__, __huzlib_noinline__
+ * --------------------------------------
+ *  force function inlining, no inlining
+ */
+#ifndef __huzlib_inline__
+#if defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
+
+   #define __huzlib_inline__     __forceinline
+   #define __huzlib_noinline__   __declspec(noinline)
+
+#elif defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
+
+   #define __huzlib_inline__     inline __attribute__((always_inline))
+   #define __huzlib_noinline__   __attribute__((noinline))
+
+#else
+
+   #define __huzlib_inline__     inline
+   #define __huzlib_noinline__
+
+#endif
+#endif /* __huzlib_inline__ */
+
+/*
+ * __huzlib_pure__, __huzlib_const__
+ * ---------------------------------
+ * unsequenced and reproducible functions
+ */
+#ifndef __huzlib_pure__
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
+
+   #define __huzlib_const__   [[unsequenced]]
+   #define __huzlib_pure__    [[reproducible]]
+
+
+#elif defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
+
+   #define __huzlib_const__   __attribute__((const))
+   #define __huzlib_pure__    __attribute__((pure))
+
+#elif defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
+
+   #define __huzlib_const__   __declspec(noalias)
+   #define __huzlib_pure__    __declspec(noalias)
+
+#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+
+   #define __huzlib_const__   _Pragma("no_side_effect")
+   #define __huzlib_pure__    _Pragma("no_side_effect")
+
+#else
+
+   #define __huzlib_const__
+   #define __huzlib_pure__
+
+#endif
+#endif /* __huzlib_pure__ */
+
+
+/*
+ * branch preducation
+ */
+#ifndef __huzlib_likely__
+#if defined(__clang__) || defined(__GNUC__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__)
+
+   #define __huzlib_likely__(x)     __builtin_expect(!!(x), 1)
+   #define __huzlib_unlikely__(x)   __builtin_expect(!!(x), 0)
+
+#else
+
+   #define __huzlib_likely__(x)     (x)
+   #define __huzlib_unlikely__(x)   (x)
+
+#endif
+#endif /* __huzlib_likely__ */
 
 
 
@@ -299,42 +419,49 @@ struct list_node
 )
 
 
+#ifdef NDEBUG
+   #define HUZLIB_LIST_API __huzlib_inline__ __huzlib_const__
+#else
+   #define HUZLIB_LIST_API __huzlib_inline__
+#endif
+
+
 /* --- query operations --- */
-extern size_t list_len(const struct list_node *head);                                   // WARN: O(n) complexity, do not use in production
-extern void list_dump(const struct list_node *head, void (*dump)(struct list_node *));  // WARN: O(n) complexity, do not use in production
-extern bool list_contains(const struct list_node *head, const struct list_node *entry); // WARN: O(n) complexity, do not use in production
-extern bool list_is_empty(const struct list_node *head);
-extern bool list_is_singular(const struct list_node *head);
-extern bool list_is_first(const struct list_node *head, const struct list_node *entry);
-extern bool list_is_last(const struct list_node *head, const struct list_node *entry);
+extern HUZLIB_LIST_API size_t list_len(const struct list_node *head);                                   // WARN: O(n) complexity, do not use in production
+extern HUZLIB_LIST_API void list_dump(const struct list_node *head, void (*dump)(struct list_node *));  // WARN: O(n) complexity, do not use in production
+extern HUZLIB_LIST_API bool list_contains(const struct list_node *head, const struct list_node *entry); // WARN: O(n) complexity, do not use in production
+extern HUZLIB_LIST_API bool list_is_empty(const struct list_node *head);
+extern HUZLIB_LIST_API bool list_is_singular(const struct list_node *head);
+extern HUZLIB_LIST_API bool list_is_first(const struct list_node *head, const struct list_node *entry);
+extern HUZLIB_LIST_API bool list_is_last(const struct list_node *head, const struct list_node *entry);
 
 
 /* --- mutate operations --- */
-extern void list_add_after(struct list_node *node, struct list_node *new);
-extern void list_add_before(struct list_node *node, struct list_node *new);
-extern void list_del(struct list_node *entry);
-extern void list_del_init(struct list_node *entry);
-extern void list_replace(struct list_node *entry, struct list_node *new);
-extern void list_replace_init(struct list_node *entry, struct list_node *new);
+extern HUZLIB_LIST_API void list_add_after(struct list_node *node, struct list_node *new);
+extern HUZLIB_LIST_API void list_add_before(struct list_node *node, struct list_node *new);
+extern HUZLIB_LIST_API void list_del(struct list_node *entry);
+extern HUZLIB_LIST_API void list_del_init(struct list_node *entry);
+extern HUZLIB_LIST_API void list_replace(struct list_node *entry, struct list_node *new);
+extern HUZLIB_LIST_API void list_replace_init(struct list_node *entry, struct list_node *new);
 
 
 /* --- inplace rearrange operations --- */
-extern void list_swap(struct list_node *a, struct list_node *b);
-extern void list_mov_after(struct list_node *node, struct list_node *dest);
-extern void list_mov_before(struct list_node *node, struct list_node *dest);
-extern void list_rotate_after(struct list_node *head);
-extern void list_rotate_before(struct list_node *head);
-extern void list_reverse(struct list_node *head);
-extern void list_sort(struct list_node *head, int (*cmp)(struct list_node *, struct list_node *));
+extern HUZLIB_LIST_API void list_swap(struct list_node *a, struct list_node *b);
+extern HUZLIB_LIST_API void list_mov_after(struct list_node *node, struct list_node *dest);
+extern HUZLIB_LIST_API void list_mov_before(struct list_node *node, struct list_node *dest);
+extern HUZLIB_LIST_API void list_rotate_after(struct list_node *head);
+extern HUZLIB_LIST_API void list_rotate_before(struct list_node *head);
+extern HUZLIB_LIST_API void list_reverse(struct list_node *head);
+extern HUZLIB_LIST_API void list_sort(struct list_node *head, int (*cmp)(struct list_node *, struct list_node *));
 
 
 /* --- chain operations --- */
-extern void list_splice_after(struct list_node *node, struct list_node *src);
-extern void list_splice_after_init(struct list_node *node, struct list_node *src);
-extern void list_splice_before(struct list_node *node, struct list_node *src);
-extern void list_splice_before_init(struct list_node *node, struct list_node *src);
-extern void list_cut_after(struct list_node *node, struct list_node *entry, struct list_node *dest);
-extern void list_cut_before(struct list_node *node, struct list_node *entry, struct list_node *dest);
+extern HUZLIB_LIST_API void list_splice_after(struct list_node *node, struct list_node *src);
+extern HUZLIB_LIST_API void list_splice_after_init(struct list_node *node, struct list_node *src);
+extern HUZLIB_LIST_API void list_splice_before(struct list_node *node, struct list_node *src);
+extern HUZLIB_LIST_API void list_splice_before_init(struct list_node *node, struct list_node *src);
+extern HUZLIB_LIST_API void list_cut_after(struct list_node *node, struct list_node *entry, struct list_node *dest);
+extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_node *entry, struct list_node *dest);
 
 
 /* --- list traversal --- */
@@ -399,14 +526,14 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
 
 #define list_foreach_from(pos, head) for (            \
    typecheck(struct list_node, *(pos)),               \
-   typecheck(struct list_node, *(head)),              \
+   typecheck(struct list_node, *(head));              \
    (pos) != (head);                                   \
    (pos) = (pos)->next                                \
 )
 
 #define list_foreach_rev_from(pos, head) for (        \
    typecheck(struct list_node, *(pos)),               \
-   typecheck(struct list_node, *(head)),              \
+   typecheck(struct list_node, *(head));              \
    (pos) != (head);                                   \
    (pos) = (pos)->prev                                \
 )
@@ -459,14 +586,14 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
 
 #define list_foreach_entry_from(entr, head, type, member) for (            \
    typecheck(type, *(entr)),                                               \
-   typecheck(struct list_node, *(head)),                                   \
+   typecheck(struct list_node, *(head));                                   \
    &(entr)->member != (head);                                              \
    (entr) = list_next_entry(entr, type, member)                            \
 )
 
 #define list_foreach_entry_rev_from(entr, head, type, member) for (        \
    typecheck(type, *(entr)),                                               \
-   typecheck(struct list_node, *(head)),                                   \
+   typecheck(struct list_node, *(head));                                   \
    &(entr)->member != (head);                                              \
    (entr) = list_prev_entry(entr, type, member)                            \
 )
@@ -479,7 +606,7 @@ extern void list_cut_before(struct list_node *node, struct list_node *entry, str
 /* --------------- query operations --------------- */
 /* ------------------------------------------------ */
 
-inline size_t list_len(const struct list_node *head)
+HUZLIB_LIST_API size_t list_len(const struct list_node *head)
 {
    assert(head);
    struct list_node *restrict cur;
@@ -489,7 +616,7 @@ inline size_t list_len(const struct list_node *head)
    return len;
 }
 
-inline void list_dump(const struct list_node *head, void (*dump)(struct list_node *))
+HUZLIB_LIST_API void list_dump(const struct list_node *head, void (*dump)(struct list_node *))
 {
    assert(head && dump);
    struct list_node *restrict cur;
@@ -497,7 +624,7 @@ inline void list_dump(const struct list_node *head, void (*dump)(struct list_nod
       dump(cur);
 }
 
-inline bool list_contains(const struct list_node *head, const struct list_node *entry)
+HUZLIB_LIST_API bool list_contains(const struct list_node *head, const struct list_node *entry)
 {
    assert(head && entry);
    struct list_node *restrict cur;
@@ -507,25 +634,25 @@ inline bool list_contains(const struct list_node *head, const struct list_node *
    return false;
 }
 
-inline bool list_is_empty(const struct list_node *head)
+HUZLIB_LIST_API bool list_is_empty(const struct list_node *head)
 {
    assert(head);
    return head->next == head;
 }
 
-inline bool list_is_singular(const struct list_node *head)
+HUZLIB_LIST_API bool list_is_singular(const struct list_node *head)
 {
    assert(head);
    return !list_is_empty(head) && head->next->next == head;
 }
 
-inline bool list_is_first(const struct list_node *head, const struct list_node *entry)
+HUZLIB_LIST_API bool list_is_first(const struct list_node *head, const struct list_node *entry)
 {
    assert(head && entry);
    return head->next == entry;
 }
 
-inline bool list_is_last(const struct list_node *head, const struct list_node *entry)
+HUZLIB_LIST_API bool list_is_last(const struct list_node *head, const struct list_node *entry)
 {
    assert(head && entry);
    return head->prev == entry;
@@ -540,7 +667,7 @@ inline bool list_is_last(const struct list_node *head, const struct list_node *e
  * before:  prev <-> next, prev <-> old <-> next
  * after:   prev <-> new <-> next
  */ 
-static inline void __list_add(struct list_node *restrict new, struct list_node *prev, struct list_node *next)
+static HUZLIB_LIST_API void __list_add(struct list_node *restrict new, struct list_node *prev, struct list_node *next)
 {
    assert(new && prev && next);
    assert((prev->next == next && next->prev == prev) || (prev->next->next == next && next->prev->prev == prev));
@@ -555,7 +682,7 @@ static inline void __list_add(struct list_node *restrict new, struct list_node *
  * before:  prev <-> next, prev <-> old(...) <-> next
  * after:   prev <-> new_head <-> ... <-> new_tail <-> next
  */ 
-static inline void __list_add_batch(struct list_node *new_head, struct list_node *new_tail, struct list_node *prev, struct list_node *next)
+static HUZLIB_LIST_API void __list_add_batch(struct list_node *new_head, struct list_node *new_tail, struct list_node *prev, struct list_node *next)
 {
    assert(new_head && new_tail && prev && next);
 
@@ -569,7 +696,7 @@ static inline void __list_add_batch(struct list_node *new_head, struct list_node
  * before:  prev <-> del <-> next
  * after:   prev <-> next
  */ 
-static inline void __list_rm(struct list_node *prev, struct list_node *next)
+static HUZLIB_LIST_API void __list_rm(struct list_node *prev, struct list_node *next)
 {
    assert(prev && next);
    prev->next = next;
@@ -580,7 +707,7 @@ static inline void __list_rm(struct list_node *prev, struct list_node *next)
  * before:  aprev <-> a <-> anext,  bprev <-> b <-> bnext
  * after:   aprev <-> b <-> anext,  bprev <-> a <-> bnext
  */ 
-static inline void __list_swap(struct list_node *aprev, struct list_node *restrict a, struct list_node *anext, struct list_node *bprev, struct list_node *restrict b, struct list_node *bnext)
+static HUZLIB_LIST_API void __list_swap(struct list_node *aprev, struct list_node *restrict a, struct list_node *anext, struct list_node *bprev, struct list_node *restrict b, struct list_node *bnext)
 {
    assert(aprev && a && anext && bprev && b && bnext);
    assert(aprev == a->prev && aprev->next == a);
@@ -605,7 +732,7 @@ static inline void __list_swap(struct list_node *aprev, struct list_node *restri
  * before:  pre <-> prev <-> next <-> suc
  * after:   pre <-> next <-> prev <-> suc
  */ 
-static inline void __list_swap_adj(struct list_node *pre, struct list_node *restrict prev, struct list_node *restrict next, struct list_node *suc)
+static HUZLIB_LIST_API void __list_swap_adj(struct list_node *pre, struct list_node *restrict prev, struct list_node *restrict next, struct list_node *suc)
 {
    assert(prev && next);
    assert(pre == prev->prev && pre->next == prev);
@@ -626,37 +753,37 @@ static inline void __list_swap_adj(struct list_node *pre, struct list_node *rest
 /* --------------- mutate operations --------------- */
 /* ------------------------------------------------- */
 
-inline void list_add_after(struct list_node *restrict node, struct list_node *restrict new)
+HUZLIB_LIST_API void list_add_after(struct list_node *restrict node, struct list_node *restrict new)
 {
    assert(node && new);
    __list_add(new, node, node->next);
 }
 
-inline void list_add_before(struct list_node *restrict node, struct list_node *restrict new)
+HUZLIB_LIST_API void list_add_before(struct list_node *restrict node, struct list_node *restrict new)
 {
    assert(node && new);
    __list_add(new, node->prev, node);
 }
 
-inline void list_del(struct list_node *restrict entry)
+HUZLIB_LIST_API void list_del(struct list_node *restrict entry)
 {
    assert(entry);
    __list_rm(entry->prev, entry->next);
 }
 
-inline void list_del_init(struct list_node *restrict entry)
+HUZLIB_LIST_API void list_del_init(struct list_node *restrict entry)
 {
    list_del(entry);
    list_init(entry);
 }
 
-inline void list_replace(struct list_node *restrict entry, struct list_node *restrict new)
+HUZLIB_LIST_API void list_replace(struct list_node *restrict entry, struct list_node *restrict new)
 {
    assert(entry && new);
    __list_add(new, entry->prev, entry->next);
 }
 
-inline void list_replace_init(struct list_node *restrict entry, struct list_node *restrict new)
+HUZLIB_LIST_API void list_replace_init(struct list_node *restrict entry, struct list_node *restrict new)
 {
    list_replace(entry, new);
    list_init(entry);
@@ -667,7 +794,7 @@ inline void list_replace_init(struct list_node *restrict entry, struct list_node
 /* --------- inplace rearrange operations --------- */
 /* ------------------------------------------------ */
 
-inline void list_swap(struct list_node *restrict a, struct list_node *restrict b)
+HUZLIB_LIST_API void list_swap(struct list_node *restrict a, struct list_node *restrict b)
 {
    assert(a && b);
    if (a->next == b)
@@ -678,35 +805,35 @@ inline void list_swap(struct list_node *restrict a, struct list_node *restrict b
       __list_swap(a->prev, a, a->next, b->prev, b, b->next);
 }
 
-inline void list_mov_after(struct list_node *restrict node, struct list_node *restrict dest)
+HUZLIB_LIST_API void list_mov_after(struct list_node *restrict node, struct list_node *restrict dest)
 {
    assert(node && dest);
    list_del(node);
    list_add_after(dest, node);
 }
 
-inline void list_mov_before(struct list_node *restrict node, struct list_node *restrict dest)
+HUZLIB_LIST_API void list_mov_before(struct list_node *restrict node, struct list_node *restrict dest)
 {
    assert(node && dest);
    list_del(node);
    list_add_before(dest, node);
 }
 
-inline void list_rotate_after(struct list_node *restrict head)
+HUZLIB_LIST_API void list_rotate_after(struct list_node *restrict head)
 {
    assert(head);
    if (!(list_is_empty(head) || list_is_singular(head)))
       __list_swap_adj(head->prev, head, head->next, head->next->next);
 }
 
-inline void list_rotate_before(struct list_node *restrict head)
+HUZLIB_LIST_API void list_rotate_before(struct list_node *restrict head)
 {
    assert(head);
    if (!(list_is_empty(head) || list_is_singular(head)))
       __list_swap_adj(head->prev->prev, head->prev, head, head->next);
 }
 
-inline void list_reverse(struct list_node *restrict head)
+HUZLIB_LIST_API void list_reverse(struct list_node *restrict head)
 {
    assert(head);
    struct list_node *cur, *tmp;
@@ -724,7 +851,7 @@ inline void list_reverse(struct list_node *restrict head)
  *
  * --- this function was generated by Gemini 3 Fast ---
  */
-inline void list_sort(struct list_node *head, int (*cmp)(struct list_node *, struct list_node *))
+HUZLIB_LIST_API void list_sort(struct list_node *head, int (*cmp)(struct list_node *, struct list_node *))
 {
    assert(head && cmp);
 
@@ -820,13 +947,13 @@ inline void list_sort(struct list_node *head, int (*cmp)(struct list_node *, str
  *
  * after:   node <-> first <-> ... <-> last <-> next_node
  */
-inline void list_splice_after(struct list_node *restrict node, struct list_node *restrict src)
+HUZLIB_LIST_API void list_splice_after(struct list_node *restrict node, struct list_node *restrict src)
 {
    assert(node && src);
    __list_add_batch(src->next, src->prev, node, node->next);
 }
 
-inline void list_splice_after_init(struct list_node *restrict node, struct list_node *restrict src)
+HUZLIB_LIST_API void list_splice_after_init(struct list_node *restrict node, struct list_node *restrict src)
 {
    assert(node && src);
    list_splice_after(node, src);
@@ -839,13 +966,13 @@ inline void list_splice_after_init(struct list_node *restrict node, struct list_
  *
  * after:   prev_node <-> first <-> ... <-> last <-> node
  */
-inline void list_splice_before(struct list_node *restrict node, struct list_node *restrict src)
+HUZLIB_LIST_API void list_splice_before(struct list_node *restrict node, struct list_node *restrict src)
 {
    assert(node && src);
    __list_add_batch(src->next, src->prev, node->prev, node);
 }
 
-inline void list_splice_before_init(struct list_node *restrict node, struct list_node *restrict src)
+HUZLIB_LIST_API void list_splice_before_init(struct list_node *restrict node, struct list_node *restrict src)
 {
    assert(node && src);
    list_splice_before(node, src);
@@ -862,7 +989,7 @@ inline void list_splice_before_init(struct list_node *restrict node, struct list
  * after:  node contains [node] <-> [split_node] ...
  * dest contains [dest] <-> 1 ... <-> [entry]
  */
-inline void list_cut_after(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
+HUZLIB_LIST_API void list_cut_after(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
 {
    assert(node && entry && list_is_empty(dest));
    struct list_node *restrict _tmp = node->next;
@@ -880,7 +1007,7 @@ inline void list_cut_after(struct list_node *restrict node, struct list_node *re
  * after:  node contains [node] <-> ... <-> [prev_node]
  * dest contains [dest] <-> [entry] ... <-> [last]
  */
-inline void list_cut_before(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
+HUZLIB_LIST_API void list_cut_before(struct list_node *restrict node, struct list_node *restrict entry, struct list_node *restrict dest)
 {
    assert(node && entry && list_is_empty(dest));
    struct list_node *restrict _tmp = node->prev;

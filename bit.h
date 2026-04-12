@@ -521,7 +521,7 @@ typedef unsigned long long ullong;
 
 
 
-#ifdef NDEBBUG
+#ifdef NDEBUG
    #define HUZLIB_BIT_API __huzlib_inline__ __huzlib_const__
 #else
    #define HUZLIB_BIT_API __huzlib_inline__

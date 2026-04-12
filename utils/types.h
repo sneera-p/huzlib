@@ -221,28 +221,63 @@
 #if (__STDC_VERSION__ <= 202311L) && !defined(container_of)
 
 /*
+ * __container_of_raw(ptr, type, member)
+ * --------------------------------------
+ * Computes a pointer to the containing structure by subtracting the offset
+ * of member from ptr. No type checking is performed.
+ *
  * WARNING:
  * This macro is the internal implementation and should not be used directly.
- * Use container_of() instead which provides type checking when available.
  */
-#define __container_of(ptr, type, member) \
-   ((type *)((char*)(ptr) - offsetof(type, member)))
+#define __container_of_raw(ptr, type, member) \
+   ((type *)((char *)(ptr) - offsetof(type, member)))
 
 
+/*
+ * __container_of_unqual(ptr, type, member)
+ * -----------------------------------------
+ * Type-checked wrapper around __container_of_raw() that verifies ptr points
+ * to the correct member type before performing the offset arithmetic.
+ *
+ * Returns a bare type * with no CV-qualifiers preserved. Use container_of()
+ * which wraps this with __requal_expr() to restore qualifiers on the result.
+ *
+ * WARNING:
+ * This macro is the internal implementation and should not be used directly.
+ */
 #if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-   #define __container_of_concat(a, b) a##b
-   #define container_of(ptr, type, member) __extension__ ({ \
-      typeof(((type *)0)->member) *__mcumptr = (ptr);       \
-      __container_of(__mcumptr, type, member);              \
+   #define __container_of_unqual(ptr, type, member) __extension__ ({ \
+      typeof(((type *)0)->member) *__mcumptr = (ptr);                \
+      __container_of_raw(__mcumptr, type, member);                   \
    })
 
 #else
-   #define container_of(ptr, type, member) typecheck_expr(  \
-      typeof(((type *)0)->member) *, (ptr),                 \
-      __container_of(ptr, type, member)                     \
+   #define __container_of_unqual(ptr, type, member) typecheck_expr(  \
+      typeof(((type *)0)->member), *(ptr),                           \
+      __container_of_raw(ptr, type, member)                          \
    )
 
 #endif
+
+/*
+ * __requal_expr(ptr, type, expr)
+ * ----------------------------
+ * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
+ *
+ * WARNING::
+ * const volatile pointers will match the const branch, returning 
+ * const type *, with volatile silently dropped. Since const volatile is
+ * very rarely used, this shouldn't be a major issue ig??
+ */
+#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
+   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
+   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
+   default:                   ((type *)(expr))                       \
+)
+
+#define container_of(ptr, type, member) \
+   __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))
+
 #endif /* container_of */
 
 
