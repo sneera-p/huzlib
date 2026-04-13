@@ -74,3 +74,26 @@
 
 #endif
 #endif /* __huzlib_likely__ */
+
+
+/*
+ * unreachable
+ * -----------
+ * code path must not reach this call.
+ */
+#ifndef unreachable
+#if (__STDC_VERSION__ >= 202311L)
+   #include <stdlib.h>
+
+#elif defined(__GNUC__) || defined(__clang__)
+    #define unreachable() __builtin_unreachable()
+
+#elif defined(_MSC_VER)
+    #define unreachable() __assume(0)
+
+#else
+    #include <assert.h>
+    #define unreachable() assert(0)
+
+#endif
+#endif /* unreachable */
