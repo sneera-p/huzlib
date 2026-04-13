@@ -433,16 +433,20 @@ struct list_node
 
 
 #ifdef NDEBUG
-   #define HUZLIB_LIST_API __huzlib_inline__ __huzlib_const__
+   #define HUZLIB_LIST_API __huzlib_inline__ __huzlib_pure__
 #else
    #define HUZLIB_LIST_API __huzlib_inline__
 #endif
 
 
+#ifndef NDEBUG
+extern size_t list_len(const struct list_node *head);                                   // WARN: O(n) complexity, do not use in production
+extern void list_dump(const struct list_node *head, void (*dump)(struct list_node *));  // WARN: O(n) complexity, do not use in production
+extern bool list_contains(const struct list_node *head, const struct list_node *entry); // WARN: O(n) complexity, do not use in production
+#endif /* NDEBUG */
+
+
 /* --- query operations --- */
-extern HUZLIB_LIST_API size_t list_len(const struct list_node *head);                                   // WARN: O(n) complexity, do not use in production
-extern HUZLIB_LIST_API void list_dump(const struct list_node *head, void (*dump)(struct list_node *));  // WARN: O(n) complexity, do not use in production
-extern HUZLIB_LIST_API bool list_contains(const struct list_node *head, const struct list_node *entry); // WARN: O(n) complexity, do not use in production
 extern HUZLIB_LIST_API bool list_is_empty(const struct list_node *head);
 extern HUZLIB_LIST_API bool list_is_singular(const struct list_node *head);
 extern HUZLIB_LIST_API bool list_is_first(const struct list_node *head, const struct list_node *entry);
@@ -615,11 +619,9 @@ extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_
 
 #ifdef HUZLIB_LIST_IMPL
 
-/* ------------------------------------------------ */
-/* --------------- query operations --------------- */
-/* ------------------------------------------------ */
+#ifndef NDEBUG
 
-HUZLIB_LIST_API size_t list_len(const struct list_node *head)
+size_t list_len(const struct list_node *head)
 {
    assert(head);
    struct list_node *restrict cur;
@@ -629,7 +631,7 @@ HUZLIB_LIST_API size_t list_len(const struct list_node *head)
    return len;
 }
 
-HUZLIB_LIST_API void list_dump(const struct list_node *head, void (*dump)(struct list_node *))
+void list_dump(const struct list_node *head, void (*dump)(struct list_node *))
 {
    assert(head && dump);
    struct list_node *restrict cur;
@@ -637,7 +639,7 @@ HUZLIB_LIST_API void list_dump(const struct list_node *head, void (*dump)(struct
       dump(cur);
 }
 
-HUZLIB_LIST_API bool list_contains(const struct list_node *head, const struct list_node *entry)
+bool list_contains(const struct list_node *head, const struct list_node *entry)
 {
    assert(head && entry);
    struct list_node *restrict cur;
@@ -646,6 +648,13 @@ HUZLIB_LIST_API bool list_contains(const struct list_node *head, const struct li
           return true;
    return false;
 }
+
+#endif /* NDEBUG */
+
+
+/* ------------------------------------------------ */
+/* --------------- query operations --------------- */
+/* ------------------------------------------------ */
 
 HUZLIB_LIST_API bool list_is_empty(const struct list_node *head)
 {
