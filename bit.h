@@ -231,22 +231,16 @@
  * TESTING
  *
  *   This library requires the Unity Test Framework and the PCG32 Random Number Generator.
- *   You can run the tests in two ways:
  *
- *   Method 1: Standard Compilation
+ *   Links:
+ *     https://github.com/ThrowTheSwitch/Unity
+ *     https://github.com/imneme/pcg-c-basic
  *
- *     Compile the header while linking the source files for Unity and PCG32:
  *
- *       cc -DHUZLIB_BIT_IMPL -DHUZLIB_BIT_TEST -x c bit.h unity.c pcg32_basic.c -o bit_tests
- *       ./bit_tests
+ *   Compile the header while linking the source files for Unity and PCG32:
  *
- *   Method 2: Using Single-Header Wrappers
- *
- *     Ensure your wrappers are in your include path so `bit.h` can find them.
- *     Using single-header versions of Unity and PCG32, compile like this:
- *
- *       cc -DHUZLIB_BIT_IMPL -DHUZLIB_BIT_TEST -x c bit.h -o bit_tests
- *       ./bit_tests
+ *     cc -DHUZLIB_BIT_IMPL -DHUZLIB_BIT_TEST -x c bit.h unity.c pcg32_basic.c -o bit_tests
+ *     ./bit_tests
  */
 #ifndef HUZLIB_BIT_H
 #define HUZLIB_BIT_H
@@ -1715,12 +1709,8 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART, 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
-#define UNITY_FRAMEWORK_SINGLE_HEADER_WRAPPER_IMPL
 #include "unity.h"
-
-#define PCG_BASIC_SINGLE_HEADER_WRAPPER_IMPL
-#include "pcg.h"
+#include "pcg_basic.h"
 
 
 void setUp(void) {}

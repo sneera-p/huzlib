@@ -154,7 +154,7 @@
  * Retrieves exact type of type->member
  */
 #ifndef typeof_member
-#define typeof_member(type, member) typeof(((type)0)->member)
+#define typeof_member(type, member) typeof(((type *)0)->member)
 #endif /* typeof_member */
 
 
