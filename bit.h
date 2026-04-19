@@ -2,7 +2,7 @@
  * bit.h - bit manipulation library
  *
  *  This is a single-header C library for bit manipulation.
- *  It works with unsigned integer types only (uchar, ushort, uint, ulong, ullong).
+ *  It works with unsigned integer types only (__huzlib_uchar, __huzlib_ushort, __huzlib_uint, __huzlib_ulong, __huzlib_ullong).
  *  It uses C11 _Generic to automatically detect the type of your variable.
  *  It acts as a fallback for C23 <stdbit.h> if your compiler does not support it.
  *  It uses fast hardware instructions when available, and fast software fallbacks when not.
@@ -57,18 +57,18 @@
  *
  *   This library defines short names for unsigned integer types:
  *
- *     uchar    unsigned char
- *     ushort   unsigned short
- *     uint     unsigned int
- *     ulong    unsigned long
- *     ullong   unsigned long long
+ *     __huzlib_uchar    unsigned char
+ *     __huzlib_ushort   unsigned short
+ *     __huzlib_uint     unsigned int
+ *     __huzlib_ulong    unsigned long
+ *     __huzlib_ullong   unsigned long long
  *
  *
  * SUPPORTED TYPES
  *
  *   All functions accept any of these types as input:
  *
- *     uchar, ushort, uint, ulong, ullong and it's derivatives (uintN_t, size_t etc.)
+ *     unsigned char, unsigned short, unsigned int, unsigned long, unsigned long long and it's derivatives (unsigned intN_t, size_t etc.)
  *
  *   The input type determines the width used for all bit operations.
  *   Pass values as the correct type to get correct results:
@@ -482,26 +482,26 @@
 
 
 
-typedef unsigned char      uchar;
-typedef unsigned short     ushort;
-typedef unsigned int       uint;
-typedef unsigned long      ulong;
-typedef unsigned long long ullong;
+typedef unsigned char      __huzlib_uchar;
+typedef unsigned short     __huzlib_ushort;
+typedef unsigned int       __huzlib_uint;
+typedef unsigned long      __huzlib_ulong;
+typedef unsigned long long __huzlib_ullong;
 
 #define HUZLIB_BIT_INTERNAL_TYPES(x, ...) \
-   x(uchar, __VA_ARGS__)                  \
-   x(ushort, __VA_ARGS__)                 \
-   x(uint, __VA_ARGS__)                   \
-   x(ulong, __VA_ARGS__)                  \
-   x(ullong, __VA_ARGS__)
+   x(__huzlib_uchar, __VA_ARGS__)         \
+   x(__huzlib_ushort, __VA_ARGS__)        \
+   x(__huzlib_uint, __VA_ARGS__)          \
+   x(__huzlib_ulong, __VA_ARGS__)         \
+   x(__huzlib_ullong, __VA_ARGS__)
 
 #define HUZLIB_BIT_INTERNAL_TYPES_GENERIC_CALL(x, func)  \
    _Generic((x),                                         \
-      uchar:  func##_uchar,                              \
-      ushort: func##_ushort,                             \
-      uint:   func##_uint,                               \
-      ulong:  func##_ulong,                              \
-      ullong: func##_ullong                              \
+      __huzlib_uchar:  func##___huzlib_uchar,            \
+      __huzlib_ushort: func##___huzlib_ushort,           \
+      __huzlib_uint:   func##___huzlib_uint,             \
+      __huzlib_ulong:  func##___huzlib_ulong,            \
+      __huzlib_ullong: func##___huzlib_ullong            \
    )
 
 #define HUZLIB_BIT_INTERNAL_C23_PROTOS(type, x) \
@@ -1717,11 +1717,11 @@ void setUp(void) {}
 void tearDown(void) {}
 
 #define HUZLIB_BIT_INTERNAL_TEST_TYPES(x, ...)  \
-   x(uchar, __VA_ARGS__)                        \
-   x(ushort, __VA_ARGS__)                       \
-   x(uint, __VA_ARGS__)                         \
-   x(ulong, __VA_ARGS__)                        \
-   x(ullong, __VA_ARGS__)                       \
+   x(__huzlib_uchar, __VA_ARGS__)               \
+   x(__huzlib_ushort, __VA_ARGS__)              \
+   x(__huzlib_uint, __VA_ARGS__)                \
+   x(__huzlib_ulong, __VA_ARGS__)               \
+   x(__huzlib_ullong, __VA_ARGS__)              \
    x(unsigned, __VA_ARGS__)                     \
    x(uint8_t, __VA_ARGS__)                      \
    x(uint16_t, __VA_ARGS__)                     \
