@@ -246,11 +246,9 @@
 #define HUZLIB_BIT_H
 
 
-/* --------------------------------------------------------------------------- */
-/* ------------------------------ utils/types.h ------------------------------ */
-/* --------------------------------------------------------------------------- */
 
-#include <stddef.h>
+#ifndef HUZLIB_BIT_INCLUDES
+#define HUZLIB_BIT_INCLUDES
 
 
 /*
@@ -296,7 +294,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_TYPEOF 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_TYPEOF */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
@@ -312,8 +311,7 @@
 #else
    #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
 #endif
-#endif
-
+#endif /* HUZLIB_INTERNAL_HAS_DECLTYPE */
 
 
 
@@ -325,10 +323,11 @@
  * WARN:
  * This macro is the internal implementation and should not be used directly.
  */
+#ifndef __huzuq
 #define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
 #define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
 #define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
-
+#endif /* __huzuq */
 
 
 
@@ -351,10 +350,14 @@
 #endif /* typeof */
 
 
+
 /*
  * typecheck(type, expr)
  * ---------------------
- * Validates 'expr' matches 'type' exactly.
+ * Validates 'expr' matches 'type'.
+ *
+ * NOTE:
+ * 'type' parameter entered must an unqualified type
  */
 #ifndef typecheck
 #define typecheck(type, expr) _Generic(   \
@@ -365,17 +368,17 @@
 
 
 
-/* --------------------------------------------------------------------------- */
-/* ------------------------------ utils/hints.h ------------------------------ */
-/* --------------------------------------------------------------------------- */
-
-
 /*
- * __huzlib_inline__, __huzlib_noinline__
+ * HUZLIB_INLINE_HINTS
  * --------------------------------------
- *  force function inlining, no inlining
+ * Compiler hints for function inlining control.
+ * 
+ * __huzlib_inline__   - force function to be inlined (small, hot functions)
+ * __huzlib_noinline__ - prevent inlining (large functions, error paths)
  */
-#ifndef __huzlib_inline__
+#ifndef HUZLIB_INLINE_HINTS
+#define HUZLIB_INLINE_HINTS
+
 #if defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
 
    #define __huzlib_inline__     __forceinline
@@ -392,14 +395,24 @@
    #define __huzlib_noinline__
 
 #endif
-#endif /* __huzlib_inline__ */
+
+#endif /* HUZLIB_INLINE_HINTS */
+
+
 
 /*
- * __huzlib_pure__, __huzlib_const__
- * ---------------------------------
- * unsequenced and reproducible functions
+ * HUZLIB_PURE_HINTS
+ * --------------------------------------
+ * Function attribute hints for optimization based on side-effect analysis.
+ * 
+ * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Falls back to empty for unsupported compilers.
  */
-#ifndef __huzlib_pure__
+#ifndef HUZLIB_PURE_HINTS
+#define HUZLIB_PURE_HINTS
+
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
    #define __huzlib_const__   [[unsequenced]]
@@ -427,13 +440,29 @@
    #define __huzlib_pure__
 
 #endif
-#endif /* __huzlib_pure__ */
+
+#endif /* HUZLIB_PURE_HINTS */
+
 
 
 /*
- * branch preducation
+ * HUZLIB_LIKELY_HINTS
+ * --------------------------------------
+ * Branch prediction hints to guide compiler optimization.
+ * 
+ * __huzlib_likely__(x)   - "x" is usually true  (common case)
+ * __huzlib_unlikely__(x) - "x" is usually false (error handling)
+ * 
+ * Example:
+ *   if (__huzlib_unlikely__(error)) {
+ *       handle_error();  // moved to cold section
+ *   }
+ * 
+ * Falls back to plain expression evaluation for other compilers.
  */
-#ifndef __huzlib_likely__
+#ifndef HUZLIB_LIKELY_HINTS
+#define HUZLIB_LIKELY_HINTS
+
 #if defined(__clang__) || defined(__GNUC__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__)
 
    #define __huzlib_likely__(x)     __builtin_expect(!!(x), 1)
@@ -445,17 +474,51 @@
    #define __huzlib_unlikely__(x)   (x)
 
 #endif
-#endif /* __huzlib_likely__ */
 
-
-/* --------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------- */
+#endif /* HUZLIB_LIKELY_HINTS */
 
 
 
+/*
+ * unreachable()
+ * -------------
+ * Compiler hint indicating that a code path must never be reached at runtime.
+ * 
+ * Behavior:
+ * - If reached, the behavior is undefined (optimizers may assume it never happens).
+ * - Enables aggressive dead code elimination and optimization.
+ * - Use after calls to functions that never return (e.g., exit(), abort()),
+ *   in default cases of exhaustive switches, or after impossible conditions.
+ * 
+ * Example:
+ *   switch (value) {
+ *       case A: return foo();
+ *       case B: return bar();
+ *   }
+ *   unreachable();  // all enum values handled above
+ */
+#ifndef unreachable
+#if (__STDC_VERSION__ >= 202311L)
+   #include <stdlib.h>
 
-#include <assert.h>
+#elif defined(__GNUC__) || defined(__clang__)
+   #define unreachable() __builtin_unreachable()
+
+#elif defined(_MSC_VER)
+   #define unreachable() __assume(0)
+
+#else
+   #include <assert.h>
+   #define unreachable() assert(0)
+
+#endif
+#endif /* unreachable */
+
+
+#endif /* HUZLIB_BIT_INCLUDES */
+
+
+
 #include <limits.h>
 
 /* ------- shorthand names ------- */
@@ -478,8 +541,6 @@
 
 #define bit_rotlp(...)  bit_rotate_left_part(__VA_ARGS__)
 #define bit_rotrp(...)  bit_rotate_right_part(__VA_ARGS__)
-
-
 
 
 typedef unsigned char      __huzlib_uchar;
@@ -653,15 +714,8 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
 #ifdef HUZLIB_BIT_IMPL
 
 
+#include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
-
-static __huzlib_inline__ unsigned int __bit_operation_not_found(void)
-{
-   assert(0);
-   abort();
-   return 0;
-}
 
 
 #if (__STDC_VERSION__ <= 201710L)
@@ -726,7 +780,7 @@ static __huzlib_inline__ unsigned int __bit_operation_not_found(void)
          return table[((w & -w) * 0x03F79D71B4CB0A89ULL) >> 58];                    \
       }                                                                             \
                                                                                     \
-      return (type)__bit_operation_not_found();                                     \
+      unreachable();                                                                \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS_DEFAULT(type)           \
@@ -798,7 +852,7 @@ static __huzlib_inline__ unsigned int __bit_operation_not_found(void)
          return table[(w * 0x03F566ED27179461ULL) >> 58];                           \
       }                                                                             \
                                                                                     \
-      return (type)__bit_operation_not_found();                                     \
+      unreachable();                                                                \
    }
 
 #elif defined(BIT_DEFAULT_FALLBACK_LOW_MEMORY)
@@ -857,7 +911,7 @@ static __huzlib_inline__ unsigned int __bit_operation_not_found(void)
          return n;                                                                  \
       }                                                                             \
                                                                                     \
-      return (type)__bit_operation_not_found();                                     \
+      unreachable();                                                                \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS_DEFAULT(type)           \
@@ -908,7 +962,7 @@ static __huzlib_inline__ unsigned int __bit_operation_not_found(void)
          return n;                                                                  \
       }                                                                             \
                                                                                     \
-      return (type)__bit_operation_not_found();                                     \
+      unreachable();                                                                \
    }
 
 #endif
@@ -958,7 +1012,7 @@ HUZLIB_BIT_API type bit_count_ones_##type(type w)                               
       return (type)(w & 0x7F);                                                      \
    }                                                                                \
                                                                                     \
-   return (type)__bit_operation_not_found();                                        \
+   unreachable();                                                                   \
 }
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)    \
@@ -1008,7 +1062,7 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                        
          case 8:  return __ffsll((uint64_t)w) - 1;                            \
       }                                                                       \
                                                                               \
-      return (type)__bit_operation_not_found();                               \
+      unreachable();                                                          \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)        \
@@ -1025,7 +1079,7 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                        
          case 8:  return __clzll((uint64_t)w);                                \
       }                                                                       \
                                                                               \
-      return (type)__bit_operation_not_found();                               \
+      unreachable();                                                          \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)           \
@@ -1038,7 +1092,7 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                        
          case 4:  return __popc((uint32_t)w);                                 \
          case 8:  return __popcll((uint64_t)w);                               \
       }                                                                       \
-      return (type)__bit_operation_not_found();                               \
+      unreachable();                                                          \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)   \
@@ -1051,7 +1105,7 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                        
          case 4:  return __ffs((uint32_t)w);                                  \
          case 8:  return __ffsll((uint64_t)w);                                \
       }                                                                       \
-      return (type)__bit_operation_not_found();                               \
+      unreachable();                                                          \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)  HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
@@ -1078,7 +1132,8 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_ctz((unsigned int)w);                \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_ctzl((unsigned long)w);              \
       if (sizeof(type) == sizeof(unsigned long long)) return __builtin_ctzll((unsigned long long)w);        \
-      else                                            return (type)__bit_operation_not_found();             \
+                                                                                                            \
+      unreachable();                                                                                        \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)                                      \
@@ -1092,7 +1147,8 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
       if (sizeof(type) == sizeof(unsigned int))       return __builtin_clz((unsigned int)w);                \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_clzl((unsigned long)w);              \
       if (sizeof(type) == sizeof(unsigned long long)) return __builtin_clzll((unsigned long long)w);        \
-      else                                            return (type)__bit_operation_not_found();             \
+                                                                                                            \
+      unreachable();                                                                                        \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)                                         \
@@ -1101,7 +1157,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
       if (sizeof(type) == sizeof(unsigned long long)) return __builtin_popcountll((unsigned long long)w);   \
-      else                                            return (type)__bit_operation_not_found();             \
+      unreachable();                                                                                        \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)                                 \
@@ -1110,7 +1166,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_ffs((unsigned int)w);                \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_ffsl((unsigned long)w);              \
       if (sizeof(type) == sizeof(unsigned long long)) return __builtin_ffsll((unsigned long long)w);        \
-      else                                            return (type)__bit_operation_not_found();             \
+      unreachable();                                                                                        \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)    HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
@@ -1139,7 +1195,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
          case 8:  return __cnttz8((uint64_t)w);                         \
       }                                                                 \
                                                                         \
-      return (type)__bit_operation_not_found();                         \
+      unreachable();                                                    \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)  \
@@ -1156,7 +1212,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
          case 8:  return __cntlz8((uint64_t)w);                         \
       }                                                                 \
                                                                         \
-      return (type)__bit_operation_not_found();                         \
+      unreachable();                                                    \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)     \
@@ -1169,7 +1225,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
          case 4:  return __popcnt4((uint32_t)w);                        \
          case 8:  return __popcnt8((uint64_t)w);                        \
       }                                                                 \
-      return (type)__bit_operation_not_found();                         \
+      unreachable();                                                    \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)   HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)
@@ -1297,7 +1353,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
          case 2:     HUZLIB_BIT_IMPL_CTZ_16(&ret, w);    break;         \
          case 4:     HUZLIB_BIT_IMPL_CTZ_32(&ret, w);    break;         \
          case 8:     HUZLIB_BIT_IMPL_CTZ_64(&ret, w);    break;         \
-         default:    assert(0);                          break;         \
+         default:    unreachable();                      break;         \
       }                                                                 \
       return ret;                                                       \
    }
@@ -1315,7 +1371,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
          case 2:     HUZLIB_BIT_IMPL_CLZ_16(&ret, w);                break;   \
          case 4:     HUZLIB_BIT_IMPL_CLZ_32(&ret, w);                break;   \
          case 8:     HUZLIB_BIT_IMPL_CLZ_64(&ret, w);                break;   \
-         default:    assert(0);                                      break;   \
+         default:    unreachable();                                  break;   \
       }                                                                       \
       return ret;                                                             \
    }
@@ -1331,7 +1387,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
             case 2:  HUZLIB_BIT_IMPL_POPC_16(&ret, w);   break;         \
             case 4:  HUZLIB_BIT_IMPL_POPC_32(&ret, w);   break;         \
             case 8:  HUZLIB_BIT_IMPL_POPC_64(&ret, w);   break;         \
-            default: assert(0);                          break;         \
+            default: unreachable();                      break;         \
          }                                                              \
          return ret;                                                    \
       }
@@ -1371,7 +1427,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
       if (sizeof(type) == sizeof(unsigned long long)) return __builtin_popcountll((unsigned long long)w);   \
-      else                                            return (type)__bit_operation_not_found();             \
+      unreachable();                                                                                        \
    }
 
 
@@ -1706,9 +1762,6 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART, 
 
 #ifdef HUZLIB_BIT_TEST
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
 #include "unity.h"
 #include "pcg_basic.h"
 

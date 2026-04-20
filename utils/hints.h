@@ -1,9 +1,14 @@
 /*
- * __huzlib_inline__, __huzlib_noinline__
+ * HUZLIB_INLINE_HINTS
  * --------------------------------------
- *  force function inlining, no inlining
+ * Compiler hints for function inlining control.
+ * 
+ * __huzlib_inline__   - force function to be inlined (small, hot functions)
+ * __huzlib_noinline__ - prevent inlining (large functions, error paths)
  */
-#ifndef __huzlib_inline__
+#ifndef HUZLIB_INLINE_HINTS
+#define HUZLIB_INLINE_HINTS
+
 #if defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
 
    #define __huzlib_inline__     __forceinline
@@ -20,14 +25,24 @@
    #define __huzlib_noinline__
 
 #endif
-#endif /* __huzlib_inline__ */
+
+#endif /* HUZLIB_INLINE_HINTS */
+
+
 
 /*
- * __huzlib_pure__, __huzlib_const__
- * ---------------------------------
- * unsequenced and reproducible functions
+ * HUZLIB_PURE_HINTS
+ * --------------------------------------
+ * Function attribute hints for optimization based on side-effect analysis.
+ * 
+ * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Falls back to empty for unsupported compilers.
  */
-#ifndef __huzlib_pure__
+#ifndef HUZLIB_PURE_HINTS
+#define HUZLIB_PURE_HINTS
+
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
    #define __huzlib_const__   [[unsequenced]]
@@ -55,13 +70,29 @@
    #define __huzlib_pure__
 
 #endif
-#endif /* __huzlib_pure__ */
+
+#endif /* HUZLIB_PURE_HINTS */
+
 
 
 /*
- * branch preducation
+ * HUZLIB_LIKELY_HINTS
+ * --------------------------------------
+ * Branch prediction hints to guide compiler optimization.
+ * 
+ * __huzlib_likely__(x)   - "x" is usually true  (common case)
+ * __huzlib_unlikely__(x) - "x" is usually false (error handling)
+ * 
+ * Example:
+ *   if (__huzlib_unlikely__(error)) {
+ *       handle_error();  // moved to cold section
+ *   }
+ * 
+ * Falls back to plain expression evaluation for other compilers.
  */
-#ifndef __huzlib_likely__
+#ifndef HUZLIB_LIKELY_HINTS
+#define HUZLIB_LIKELY_HINTS
+
 #if defined(__clang__) || defined(__GNUC__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__)
 
    #define __huzlib_likely__(x)     __builtin_expect(!!(x), 1)
@@ -73,27 +104,42 @@
    #define __huzlib_unlikely__(x)   (x)
 
 #endif
-#endif /* __huzlib_likely__ */
+
+#endif /* HUZLIB_LIKELY_HINTS */
+
 
 
 /*
- * unreachable
- * -----------
- * code path must not reach this call.
+ * unreachable()
+ * -------------
+ * Compiler hint indicating that a code path must never be reached at runtime.
+ * 
+ * Behavior:
+ * - If reached, the behavior is undefined (optimizers may assume it never happens).
+ * - Enables aggressive dead code elimination and optimization.
+ * - Use after calls to functions that never return (e.g., exit(), abort()),
+ *   in default cases of exhaustive switches, or after impossible conditions.
+ * 
+ * Example:
+ *   switch (value) {
+ *       case A: return foo();
+ *       case B: return bar();
+ *   }
+ *   unreachable();  // all enum values handled above
  */
 #ifndef unreachable
 #if (__STDC_VERSION__ >= 202311L)
    #include <stdlib.h>
 
 #elif defined(__GNUC__) || defined(__clang__)
-    #define unreachable() __builtin_unreachable()
+   #define unreachable() __builtin_unreachable()
 
 #elif defined(_MSC_VER)
-    #define unreachable() __assume(0)
+   #define unreachable() __assume(0)
 
 #else
-    #include <assert.h>
-    #define unreachable() assert(0)
+   #include <assert.h>
+   #define unreachable() assert(0)
 
 #endif
 #endif /* unreachable */

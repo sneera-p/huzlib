@@ -2,11 +2,9 @@
 #define HUZLIB_LIST_H
 
 
-/* --------------------------------------------------------------------------- */
-/* ------------------------------ utils/types.h ------------------------------ */
-/* --------------------------------------------------------------------------- */
 
-#include <stddef.h>
+#ifndef HUZLIB_LIST_INCLUDES
+#define HUZLIB_LIST_INCLUDES
 
 
 /*
@@ -52,7 +50,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_TYPEOF 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_TYPEOF */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
@@ -68,7 +67,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_DECLTYPE */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
@@ -85,8 +85,7 @@
 #else
    #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
 #endif
-#endif
-
+#endif /* HUZLIB_INTERNAL_HAS_STATEMENT_EXPR */
 
 
 
@@ -98,11 +97,11 @@
  * WARN:
  * This macro is the internal implementation and should not be used directly.
  */
+#ifndef __huzuq
 #define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
 #define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
 #define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
-
-
+#endif /* __huzuq */
 
 
 
@@ -125,10 +124,14 @@
 #endif /* typeof */
 
 
+
 /*
  * typecheck(type, expr)
  * ---------------------
- * Validates 'expr' matches 'type' exactly.
+ * Validates 'expr' matches 'type'.
+ *
+ * NOTE:
+ * 'type' parameter entered must an unqualified type
  */
 #ifndef typecheck
 #define typecheck(type, expr) _Generic(   \
@@ -136,6 +139,20 @@
    type: 1                                \
 )
 #endif /* typecheck */
+
+
+
+/* typecheck_member(mtype, vartype, member)
+ * -----------------------------------
+ * Validated 'vartype->member' matches 'mtype'
+ *
+ * NOTE:
+ * 'mtype' parameter entered must an unqualified type
+ */
+#ifndef typecheck_member
+#define typecheck_member(mtype, vartype, member) typecheck(mtype, ((vartype *)0)->member)
+#endif /* typecheck_member */
+
 
 
 /*
@@ -153,7 +170,6 @@
 
 
 
-
 /*
  * container_of(ptr, type, member)
  * -------------------------------
@@ -165,7 +181,7 @@
  *
  * Return: pointer to the containing structure
  */
-#if (__STDC_VERSION__ <= 202311L) && !defined(container_of)
+#if !defined(container_of) && (__STDC_VERSION__ <= 202311L) 
 
 /*
  * __container_of_raw(ptr, type, member)
@@ -176,6 +192,7 @@
  * WARNING:
  * This macro is the internal implementation and should not be used directly.
  */
+#include <stddef.h>
 #define __container_of_raw(ptr, type, member) \
    ((type *)((char *)(ptr) - offsetof(type, member)))
 
@@ -241,6 +258,7 @@
 #endif /* container_of */
 
 
+
 /*
  * SWAP(a, b)
  * ----------
@@ -266,18 +284,17 @@
 
 
 
-
-/* --------------------------------------------------------------------------- */
-/* ------------------------------ utils/hints.h ------------------------------ */
-/* --------------------------------------------------------------------------- */
-
-
 /*
- * __huzlib_inline__, __huzlib_noinline__
+ * HUZLIB_INLINE_HINTS
  * --------------------------------------
- *  force function inlining, no inlining
+ * Compiler hints for function inlining control.
+ * 
+ * __huzlib_inline__   - force function to be inlined (small, hot functions)
+ * __huzlib_noinline__ - prevent inlining (large functions, error paths)
  */
-#ifndef __huzlib_inline__
+#ifndef HUZLIB_INLINE_HINTS
+#define HUZLIB_INLINE_HINTS
+
 #if defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
 
    #define __huzlib_inline__     __forceinline
@@ -294,14 +311,24 @@
    #define __huzlib_noinline__
 
 #endif
-#endif /* __huzlib_inline__ */
+
+#endif /* HUZLIB_INLINE_HINTS */
+
+
 
 /*
- * __huzlib_pure__, __huzlib_const__
- * ---------------------------------
- * unsequenced and reproducible functions
+ * HUZLIB_PURE_HINTS
+ * --------------------------------------
+ * Function attribute hints for optimization based on side-effect analysis.
+ * 
+ * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Falls back to empty for unsupported compilers.
  */
-#ifndef __huzlib_pure__
+#ifndef HUZLIB_PURE_HINTS
+#define HUZLIB_PURE_HINTS
+
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
    #define __huzlib_const__   [[unsequenced]]
@@ -329,13 +356,29 @@
    #define __huzlib_pure__
 
 #endif
-#endif /* __huzlib_pure__ */
+
+#endif /* HUZLIB_PURE_HINTS */
+
 
 
 /*
- * branch preducation
+ * HUZLIB_LIKELY_HINTS
+ * --------------------------------------
+ * Branch prediction hints to guide compiler optimization.
+ * 
+ * __huzlib_likely__(x)   - "x" is usually true  (common case)
+ * __huzlib_unlikely__(x) - "x" is usually false (error handling)
+ * 
+ * Example:
+ *   if (__huzlib_unlikely__(error)) {
+ *       handle_error();  // moved to cold section
+ *   }
+ * 
+ * Falls back to plain expression evaluation for other compilers.
  */
-#ifndef __huzlib_likely__
+#ifndef HUZLIB_LIKELY_HINTS
+#define HUZLIB_LIKELY_HINTS
+
 #if defined(__clang__) || defined(__GNUC__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__)
 
    #define __huzlib_likely__(x)     __builtin_expect(!!(x), 1)
@@ -347,14 +390,9 @@
    #define __huzlib_unlikely__(x)   (x)
 
 #endif
-#endif /* __huzlib_likely__ */
 
+#endif /* HUZLIB_LIKELY_HINTS */
 
-
-
-/* -------------------------------------------------------------------------- */
-/* ---------------------------- utils/prefetch.h ---------------------------- */
-/* -------------------------------------------------------------------------- */
 
 
 /*
@@ -404,15 +442,12 @@
 
 #endif /* prefetch_read */
 
-/* --------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------- */
+
+#endif /* HUZLIB_LIST_INCLUDES */
 
 
 
-
-
-#include <assert.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 
@@ -557,15 +592,16 @@ extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_
 
 
 /* --- container macros --- */
-#define list_entry(ptr, type, member)        container_of(ptr, type, member)
-#define list_first_entry(head, type, member) container_of((head)->next, type, member)
-#define list_last_entry(head, type, member)  container_of((head)->prev, type, member)
-#define list_next_entry(entr, type, member)  container_of((entr)->member.next, type, member)
-#define list_prev_entry(entr, type, member)  container_of((entr)->member.prev, type, member)
+#define list_entry(ptr, type, member)           container_of(ptr, type, member)
+#define list_first_entry(head, type, member)    container_of((head)->next, type, member)
+#define list_last_entry(head, type, member)     container_of((head)->prev, type, member)
+#define list_next_entry(entr, type, member)     container_of((entr)->member.next, type, member)
+#define list_prev_entry(entr, type, member)     container_of((entr)->member.prev, type, member)
 
 #define list_foreach_entry(entr, head, type, member) for (                 \
    typecheck(type, *(entr)),                                               \
    typecheck(struct list_node, *(head)),                                   \
+   typecheck_member(struct list_node, type, member),                       \
    (entr) = list_first_entry(head, type, member);                          \
    &(entr)->member != (head);                                              \
    (entr) = list_next_entry(entr, type, member)                            \
@@ -574,36 +610,40 @@ extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_
 #define list_foreach_entry_rev(entr, head, type, member) for (             \
    typecheck(type, *(entr)),                                               \
    typecheck(struct list_node, *(head)),                                   \
+   typecheck_member(struct list_node, type, member),                       \
    (entr) = list_last_entry(head, type, member);                           \
    &(entr)->member != (head);                                              \
    (entr) = list_prev_entry(entr, type, member)                            \
 )
 
-#define list_foreach_entry_safe(entr, tmp, head, type, member) for (       \
+#define list_foreach_entry_safe(entr, temp, head, type, member) for (      \
    typecheck(type, *(entr)),                                               \
-   typecheck(type, *(tmp)),                                                \
+   typecheck(type, *(temp)),                                               \
    typecheck(struct list_node, *(head)),                                   \
+   typecheck_member(struct list_node, type, member),                       \
    (entr) = list_first_entry(head, type, member),                          \
-   (tmp) = list_next_entry(entr, type, member);                            \
+   (temp) = list_next_entry(entr, type, member);                           \
    &(entr)->member != (head);                                              \
-   (entr) = (tmp),                                                         \
-   (tmp) = list_next_entry(tmp, type, member)                              \
+   (entr) = (temp),                                                        \
+   (temp) = list_next_entry(temp, type, member)                            \
 )
 
-#define list_foreach_entry_safe_rev(entr, tmp, head, type, member) for (   \
+#define list_foreach_entry_safe_rev(entr, temp, head, type, member) for (  \
    typecheck(type, *(entr)),                                               \
-   typecheck(type, *(tmp)),                                                \
+   typecheck(type, *(temp)),                                               \
    typecheck(struct list_node, *(head)),                                   \
+   typecheck_member(struct list_node, type, member),                       \
    (entr) = list_last_entry(head, type, member),                           \
-   (tmp) = list_prev_entry(entr, type, member);                            \
+   (temp) = list_prev_entry(entr, type, member);                           \
    &(entr)->member != (head);                                              \
-   (entr) = (tmp),                                                         \
-   (tmp) = list_prev_entry(tmp, type, member)                              \
+   (entr) = (temp),                                                        \
+   (temp) = list_prev_entry(temp, type, member)                            \
 )
 
 #define list_foreach_entry_from(entr, head, type, member) for (            \
    typecheck(type, *(entr)),                                               \
    typecheck(struct list_node, *(head));                                   \
+   typecheck_member(struct list_node, type, member),                       \
    &(entr)->member != (head);                                              \
    (entr) = list_next_entry(entr, type, member)                            \
 )
@@ -611,6 +651,7 @@ extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_
 #define list_foreach_entry_rev_from(entr, head, type, member) for (        \
    typecheck(type, *(entr)),                                               \
    typecheck(struct list_node, *(head));                                   \
+   typecheck_member(struct list_node, type, member),                       \
    &(entr)->member != (head);                                              \
    (entr) = list_prev_entry(entr, type, member)                            \
 )
@@ -618,6 +659,8 @@ extern HUZLIB_LIST_API void list_cut_before(struct list_node *node, struct list_
 
 
 #ifdef HUZLIB_LIST_IMPL
+
+#include <assert.h>
 
 #ifndef NDEBUG
 

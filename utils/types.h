@@ -1,6 +1,3 @@
-#include <stddef.h>
-
-
 /*
  * Use the following compiler detection order in macros to 
  * avoid my ass being riddled with spice trying to find which 
@@ -44,7 +41,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_TYPEOF 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_TYPEOF */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL
@@ -59,7 +57,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
@@ -75,7 +74,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_DECLTYPE */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE
@@ -91,7 +91,8 @@
 #else
    #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 0
 #endif
-#endif
+#endif /* HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE */
+
 
 
 #ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
@@ -108,8 +109,7 @@
 #else
    #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
 #endif
-#endif
-
+#endif /* HUZLIB_INTERNAL_HAS_STATEMENT_EXPR */
 
 
 
@@ -121,11 +121,11 @@
  * WARN:
  * This macro is the internal implementation and should not be used directly.
  */
+#ifndef __huzuq
 #define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
 #define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
 #define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
-
-
+#endif /* __huzuq */
 
 
 
@@ -148,6 +148,7 @@
 #endif /* typeof */
 
 
+
 /*
  * typeof_member(type, member)
  * ---------------------------
@@ -156,6 +157,7 @@
 #ifndef typeof_member
 #define typeof_member(type, member) typeof(((type *)0)->member)
 #endif /* typeof_member */
+
 
 
 /*
@@ -178,17 +180,35 @@
 #endif /* types_equal */
 
 
+
 /*
  * typecheck(type, expr)
  * ---------------------
- * Validates 'expr' matches 'type' exactly.
+ * Validates 'expr' matches 'type'.
+ *
+ * NOTE:
+ * 'type' parameter entered must an unqualified type
  */
 #ifndef typecheck
 #define typecheck(type, expr) _Generic(   \
    (expr),                                \
-   type: 1                               \
+   type: 1                                \
 )
 #endif /* typecheck */
+
+
+
+/* typecheck_member(mtype, vartype, member)
+ * -----------------------------------
+ * Validated 'vartype->member' matches 'mtype'
+ *
+ * NOTE:
+ * 'mtype' parameter entered must an unqualified type
+ */
+#ifndef typecheck_member
+#define typecheck_member(mtype, vartype, member) typecheck(mtype, ((vartype *)0)->member)
+#endif /* typecheck_member */
+
 
 
 /*
@@ -206,7 +226,6 @@
 
 
 
-
 /*
  * container_of(ptr, type, member)
  * -------------------------------
@@ -218,7 +237,7 @@
  *
  * Return: pointer to the containing structure
  */
-#if (__STDC_VERSION__ <= 202311L) && !defined(container_of)
+#if !defined(container_of) && (__STDC_VERSION__ <= 202311L) 
 
 /*
  * __container_of_raw(ptr, type, member)
@@ -229,6 +248,7 @@
  * WARNING:
  * This macro is the internal implementation and should not be used directly.
  */
+#include <stddef.h>
 #define __container_of_raw(ptr, type, member) \
    ((type *)((char *)(ptr) - offsetof(type, member)))
 
@@ -294,6 +314,7 @@
 #endif /* container_of */
 
 
+
 /*
  * SWAP(a, b)
  * ----------
@@ -316,6 +337,7 @@
    b = __huzuq(__tmp);              \
 } while (0)
 #endif
+
 
 
 /*
