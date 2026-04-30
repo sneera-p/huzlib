@@ -17,3 +17,10 @@ inputs/**
 a.out
 a.exe
 main.c
+
+*.o
+*.so
+*.dll
+*.dylib
+
+.gdb*
