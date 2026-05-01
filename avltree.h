@@ -210,7 +210,7 @@
  */
 #if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
    #define __container_of_unqual(ptr, type, member) __extension__ ({ \
-      typeof(((type *)0)->member) *__mcumptr = (ptr);                \
+      const typeof(((type *)0)->member) *__mcumptr = (ptr);          \
       __container_of_raw(__mcumptr, type, member);                   \
    })
 
@@ -545,6 +545,22 @@ struct avl_root_linked
 #define AVL_ROOT_LINKED_INIT  ((struct avl_root_linked) { .root = AVL_ROOT_INIT, .first = NULL, .last = NULL })
 
 
+#define avl_entry(ptr, type, avl_member)  (        \
+   typecheck(struct avl_node, *(ptr)),             \
+   container_of(ptr, type, avl_member)             \
+)
+
+#define avl_linked_entry(ptr, type, avl_member) (  \
+   typecheck(struct avl_node_linked, *(ptr)),      \
+   container_of(ptr, type, avl_member)             \
+)
+
+/* --- sanity checks --- */
+_Static_assert(offsetof(struct avl_root_cached, root) == 0, "Do not fuck with the avl_root_cached type");
+_Static_assert(offsetof(struct avl_root_linked, root) == 0, "Do not fuck with the avl_root_linked type");
+_Static_assert(offsetof(struct avl_node_linked, node) == 0, "Do not fuck with the avl_node_linked type");
+
+
 /*
  * AVL Augmentation Callbacks
  * --------------------------
@@ -565,9 +581,7 @@ struct avl_root_linked
  *             and store it in the node's augmentation field.
  *
  *             Called during:
- *               - After linking a new leaf
  *               - During propagate walks
- *               - After rotations (via rotate callback)
  *
  * @copy:      Copy augmentation data from old node to new node.
  *             Called during ejection when a node is replaced by its
@@ -581,7 +595,7 @@ struct avl_root_linked
  *             the two rotated nodes (typically by calling update on both).
  *
  *             Called during:
- *               - Tree rebalancing after insert/delete
+ *               - after rotate_left/right
  *
  * @propagate: Bulk update of a path from @start up to @stop (exclusive).
  *             Walks from @start up the parent pointers, calling update on
@@ -592,7 +606,6 @@ struct avl_root_linked
  *
  *             Called during:
  *               - Early exit paths in rebalancing (height unchanged after rotation)
- *               - Path updates after successor relocation in ejection
  *
  * Typical usage for an order-statistic tree (subtree sizes):
  *
@@ -653,6 +666,15 @@ extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct a
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *root);
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *root);
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *node);
+
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *root);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *root);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *node);
+
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *node);
 
 
 /* --- mutate operations --- */
@@ -1631,6 +1653,7 @@ static HUZLIB_AVL_TREE_API_INLINE struct avl_node *__avl_eject(struct avl_root *
    }
    else
    {
+
       /*
        * case: 'node' is leaf node
        *
@@ -1641,6 +1664,7 @@ static HUZLIB_AVL_TREE_API_INLINE struct avl_node *__avl_eject(struct avl_root *
       *link = NULL;
       node = parent;
    }
+
    __avl_eject_rebalance(root, parent, isleft, augment);
    return node; // return parent in case node is first-node
 }
@@ -1710,34 +1734,97 @@ HUZLIB_AVL_TREE_API_INLINE void avl_root_linked_init(struct avl_root_linked *res
 /* --------------- getter functions  --------------- */
 /* ------------------------------------------------- */
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *restrict node)
 {
    assert(node);
    return __avl_parent(node->__parent_vbalance);
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *restrict node)
 {
    assert(node);
    return __avl_balance(node->__parent_vbalance);
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *root)
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *restrict root)
 {
-   assert(root);
    return (struct avl_root *)&root->root;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *restrict root)
 {
-   assert(root);
    return (struct avl_root *)&root->root;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *restrict node)
 {
-   assert(node);
    return (struct avl_node *)&node->node;
+}
+
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *restrict root)
+{
+   return (struct avl_root_cached *)container_of(root, struct avl_root_cached, root);
+}
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *restrict root)
+{
+   return (struct avl_root_linked *)container_of(root, struct avl_root_linked, root);
+}
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *restrict node)
+{
+   return (struct avl_node_linked *)container_of(node, struct avl_node_linked, node);
+}
+
+
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *restrict node)
+{
+   struct avl_node *tmp = avl_linked_node(node)->left;
+   /*
+    * assuming avl_node is at offset 0 inside avl_node_linked,
+    * compiler optimizes the branch away to:
+    *   return (struct avl_node_linked *)tmp;
+    */
+   if (tmp)
+      return container_of(tmp, struct avl_node_linked, node);
+   else
+      return NULL;
+}
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *restrict node)
+{
+   struct avl_node *tmp = avl_linked_node(node)->right;
+   /*
+    * assuming avl_node is at offset 0 inside avl_node_linked,
+    * compiler optimizes the branch away to:
+    *   return (struct avl_node_linked *)tmp;
+    */
+   if (tmp)
+      return container_of(tmp, struct avl_node_linked, node);
+   else
+      return NULL;
+}
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *restrict node)
+{
+   struct avl_node *tmp = avl_parent(avl_linked_node(node));
+   /*
+    * assuming avl_node is at offset 0 inside avl_node_linked,
+    * compiler optimizes the branch away to:
+    *   return (struct avl_node_linked *)tmp;
+    */
+   if (tmp)
+      return container_of(tmp, struct avl_node_linked, node);
+   else
+      return NULL;
+}
+
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *restrict node)
+{
+   return avl_balance(avl_linked_node(node));
 }
 
 
@@ -1792,8 +1879,8 @@ HUZLIB_AVL_TREE_API_INLINE void avl_link_node(struct avl_node *restrict node, st
  */
 HUZLIB_AVL_TREE_API_INLINE void avl_link_node_linked(struct avl_node_linked *restrict node, struct avl_node_linked *restrict parent, struct avl_node **restrict link, bool isleft)
 {
-   assert(node && ((isleft) ? parent != NULL : true));
-   avl_link_node(&node->node, (parent) ? &parent->node : NULL, link);
+   assert(node && ((isleft) ? (!parent || &avl_linked_node(parent)->left == link) : (!parent || &avl_linked_node(parent)->right == link)));
+   avl_link_node(&node->node, (parent) ? avl_linked_node(parent) : NULL, link);
 
    if (isleft)
       __avl_add_linked(node, parent->prev, parent);
@@ -1879,14 +1966,14 @@ HUZLIB_AVL_TREE_API void avl_eject_cached_augmented(struct avl_root_cached *rest
  * @node:    the node to remove, not NULL
  * @augment: augment callback functions
  */
-HUZLIB_AVL_TREE_API void avl_eject_linked(struct avl_root_linked *restrict root, struct avl_node_linked *node)
+HUZLIB_AVL_TREE_API void avl_eject_linked(struct avl_root_linked *restrict root, struct avl_node_linked *restrict node)
 {
    avl_eject_linked_augmented(root, node, &__avl_dummy_augment);
 }
 
-HUZLIB_AVL_TREE_API void avl_eject_linked_augmented(struct avl_root_linked *restrict root, struct avl_node_linked *node, const struct avl_augment_callbacks *restrict augment)
+HUZLIB_AVL_TREE_API void avl_eject_linked_augmented(struct avl_root_linked *restrict root, struct avl_node_linked *restrict node, const struct avl_augment_callbacks *restrict augment)
 {
-   assert(root && node);
+   assert(root && node && augment);
 
    bool isleft;
    struct avl_node *restrict n = avl_linked_node(node), *restrict parent = avl_parent(n);
@@ -1905,7 +1992,7 @@ HUZLIB_AVL_TREE_API void avl_eject_linked_augmented(struct avl_root_linked *rest
        *  (a) (b) (v) (x)
        */
 
-      struct avl_node *restrict succ = &node->next->node;
+      struct avl_node *restrict succ = avl_linked_node(node->next);
       if (succ == n->right)
       {
          /*
@@ -2269,23 +2356,51 @@ static void avl_setup_test_node(struct avl_node *node, struct avl_node *left, st
 }
 
 /*
- * avl_verify_recursive(node)
- * --------------------------
+ * avl_setup_test_node_linked(node, left, right, parent, balance, prev, next)
+ * --------------------------------------------------------------------------
+ * setups 'node' for testing purposes with children 'left' & 'right', parent 'parent', balance 'balance'
+ * and in-order 'prev' and 'next'
+ *
+ * @node:    test node
+ * @left:    left child tobe set
+ * @right:   right child tobe set
+ * @parent:  parent tobe set
+ * @balance: balance tobe set
+ * @prev:    inorder predecessor
+ * @next:    inorder successor
+ */
+static void avl_setup_test_node_linked(struct avl_node_linked *node, struct avl_node_linked *left, struct avl_node_linked *right, struct avl_node_linked *parent, int balance, struct avl_node_linked *prev, struct avl_node_linked *next)
+{
+   assert(node);
+   avl_setup_test_node(
+      avl_linked_node(node),
+      avl_linked_node(left),
+      avl_linked_node(right),
+      avl_linked_node(parent),
+      balance
+   );
+   __avl_add_linked(node, prev, next); 
+}
+
+/*
+ * avl_verify_recursive(node, augment_verify)
+ * ------------------------------------------
  * verify 'node' and it's subtree are a correct BST-nodes and AVL-nodes
  *
- * @node: cursor node
+ * @node:           node to verify
+ * @augment_verify: callback to verify augmented properties
  *
  * Return:
  *    valid node:   height of subtree starting from 'node' (h >= 0)
  *    invalid node: -1
  */
-static long long avl_verify_recursive(struct avl_node *node)
+static long long avl_verify_recursive(struct avl_node *node, bool (*augment_verify)(struct avl_node *))
 {
    if (!node)
       return 0;
 
-   long long left_height = avl_verify_recursive(node->left);
-   long long right_height = avl_verify_recursive(node->right);
+   long long left_height = avl_verify_recursive(node->left, augment_verify);
+   long long right_height = avl_verify_recursive(node->right, augment_verify);
 
    // verify child linkages
    if (left_height < 0 || right_height < 0)
@@ -2301,12 +2416,16 @@ static long long avl_verify_recursive(struct avl_node *node)
    if ((balance > 1) || (balance < -1) || (avl_balance(node) != balance))
       return -1;
 
+   // verify augmented properties
+   if (!augment_verify(node))
+      return -1;
+
    return 1 + ((left_height > right_height) ? left_height : right_height);
 }
 
 void setUp(void) {}
 void tearDown(void) {}
-
+bool dummy_augment_verify(struct avl_node *) { return true; }
 
 static void test_avl_eject_rebalance_LL(void)
 {
@@ -2362,12 +2481,13 @@ static void test_avl_eject_rebalance_LL(void)
 
          __avl_eject_rebalance(&root, &w, (w_balances[j] > 0), &__avl_dummy_augment);
 
-         TEST_ASSERT_EQUAL(&c, avl_parent(&n));
+         TEST_ASSERT_EQUAL_PTR(&c, avl_parent(&n));
          TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-         TEST_ASSERT_EQUAL(NULL, avl_parent(&c));
+
+         TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&c));
          TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
 
-         TEST_ASSERT_TRUE(avl_verify_recursive(&c) != -1);
+         TEST_ASSERT_TRUE(avl_verify_recursive(&c, &dummy_augment_verify) != -1);
       }
    }
 }
@@ -2429,14 +2549,16 @@ static void test_avl_eject_rebalance_LR(void)
 
          __avl_eject_rebalance(&root, &w, (w_balances[j] > 0), &__avl_dummy_augment);
 
-         TEST_ASSERT_EQUAL(&g, avl_parent(&n));
+         TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&n));
          TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-         TEST_ASSERT_EQUAL(&g, avl_parent(&c));
+
+         TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&c));
          TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
-         TEST_ASSERT_EQUAL(NULL, avl_parent(&g));
+
+         TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&g));
          TEST_ASSERT_EQUAL(0, avl_balance(&g));
 
-         TEST_ASSERT_TRUE(avl_verify_recursive(&g) != -1);
+         TEST_ASSERT_TRUE(avl_verify_recursive(&g, &dummy_augment_verify) != -1);
       }
    }
 }
@@ -2496,12 +2618,13 @@ static void test_avl_eject_rebalance_RR(void)
 
          __avl_eject_rebalance(&root, &w, (w_balances[j] > 0), &__avl_dummy_augment);
 
-         TEST_ASSERT_EQUAL(&c, avl_parent(&n));
+         TEST_ASSERT_EQUAL_PTR(&c, avl_parent(&n));
          TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-         TEST_ASSERT_EQUAL(NULL, avl_parent(&c));
+
+         TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&c));
          TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
 
-         TEST_ASSERT_TRUE(avl_verify_recursive(&c) != -1);
+         TEST_ASSERT_TRUE(avl_verify_recursive(&c, &dummy_augment_verify) != -1);
       }
    }
 }
@@ -2564,14 +2687,16 @@ static void test_avl_eject_rebalance_RL(void)
 
          __avl_eject_rebalance(&root, &w, (w_balances[j] > 0), &__avl_dummy_augment);
 
-         TEST_ASSERT_EQUAL(&g, avl_parent(&n));
+         TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&n));
          TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-         TEST_ASSERT_EQUAL(&g, avl_parent(&c));
+
+         TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&c));
          TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
-         TEST_ASSERT_EQUAL(NULL, avl_parent(&g));
+
+         TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&g));
          TEST_ASSERT_EQUAL(0, avl_balance(&g));
 
-         TEST_ASSERT_TRUE(avl_verify_recursive(&g) != -1);
+         TEST_ASSERT_TRUE(avl_verify_recursive(&g, &dummy_augment_verify) != -1);
       }
    }
 }
@@ -2624,12 +2749,13 @@ static void test_avl_insert_rebalance_LL(void)
 
       __avl_insert_rebalance(&root, &g, (g_balances[i] == 1), &__avl_dummy_augment);
 
-      TEST_ASSERT_EQUAL(&c, avl_parent(&n));
+      TEST_ASSERT_EQUAL_PTR(&c, avl_parent(&n));
       TEST_ASSERT_EQUAL(0, avl_balance(&n));
-      TEST_ASSERT_EQUAL(NULL, avl_parent(&c));
+
+      TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&c));
       TEST_ASSERT_EQUAL(0, avl_balance(&c));
 
-      TEST_ASSERT_TRUE(avl_verify_recursive(&c) != -1);
+      TEST_ASSERT_TRUE(avl_verify_recursive(&c, &dummy_augment_verify) != -1);
    }
 }
 
@@ -2682,14 +2808,16 @@ static void test_avl_insert_rebalance_LR(void)
 
       __avl_insert_rebalance(&root, &g, (g_balances[i] == 1), &__avl_dummy_augment);
 
-      TEST_ASSERT_EQUAL(&g, avl_parent(&n));
+      TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&n));
       TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-      TEST_ASSERT_EQUAL(&g, avl_parent(&c));
+
+      TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&c));
       TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
-      TEST_ASSERT_EQUAL(NULL, avl_parent(&g));
+
+      TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&g));
       TEST_ASSERT_EQUAL(0, avl_balance(&g));
 
-      TEST_ASSERT_TRUE(avl_verify_recursive(&g) != -1);
+      TEST_ASSERT_TRUE(avl_verify_recursive(&g, &dummy_augment_verify) != -1);
    }
 }
 
@@ -2740,12 +2868,13 @@ static void test_avl_insert_rebalance_RR(void)
 
       __avl_insert_rebalance(&root, &g, (g_balances[i] == 1), &__avl_dummy_augment);
 
-      TEST_ASSERT_EQUAL(&c, avl_parent(&n));
+      TEST_ASSERT_EQUAL_PTR(&c, avl_parent(&n));
       TEST_ASSERT_EQUAL(0, avl_balance(&n));
-      TEST_ASSERT_EQUAL(NULL, avl_parent(&c));
+
+      TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&c));
       TEST_ASSERT_EQUAL(0, avl_balance(&c));
 
-      TEST_ASSERT_TRUE(avl_verify_recursive(&c) != -1);
+      TEST_ASSERT_TRUE(avl_verify_recursive(&c, &dummy_augment_verify) != -1);
    }
 }
 
@@ -2798,22 +2927,575 @@ static void test_avl_insert_rebalance_RL(void)
 
       __avl_insert_rebalance(&root, &g, (g_balances[i] == 1), &__avl_dummy_augment);
 
-      TEST_ASSERT_EQUAL(&g, avl_parent(&n));
+      TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&n));
       TEST_ASSERT_EQUAL(n_expected[i], avl_balance(&n));
-      TEST_ASSERT_EQUAL(&g, avl_parent(&c));
+
+      TEST_ASSERT_EQUAL_PTR(&g, avl_parent(&c));
       TEST_ASSERT_EQUAL(c_expected[i], avl_balance(&c));
-      TEST_ASSERT_EQUAL(NULL, avl_parent(&g));
+
+      TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&g));
       TEST_ASSERT_EQUAL(0, avl_balance(&g));
 
-      TEST_ASSERT_TRUE(avl_verify_recursive(&g) != -1);
+      TEST_ASSERT_TRUE(avl_verify_recursive(&g, &dummy_augment_verify) != -1);
    }
 }
 
 
-static void test_avl_subtree_height()
+static void test_avl_eject_2child_shallow_successor(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, g, w, x, y, z, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    / \   \
+    *   x   g   u
+    *      / \
+    *     y   z
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL, 1);
+   avl_setup_test_node(&c, &x, &g,  &n, -1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   avl_setup_test_node(&g, &y, &z, &c,  0);
+   avl_setup_test_node(&y, NULL, NULL, &g, 0);
+   avl_setup_test_node(&z, NULL, NULL, &g, 0);
+
+   struct avl_node *res = __avl_eject(&root, &g, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(&g, res);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // ancestor's balance unchanged
+   TEST_ASSERT_EQUAL(1, avl_balance(&n));
+   TEST_ASSERT_EQUAL(-1, avl_balance(&c));
+
+   // z now replaces g
+   TEST_ASSERT_EQUAL_PTR(&y, z.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, z.right);
+   TEST_ASSERT_EQUAL_PTR(&c, avl_parent(&z));
+   TEST_ASSERT_EQUAL(1, avl_balance(&z));
+
+   // y new parent is z
+   TEST_ASSERT_EQUAL_PTR(&z, avl_parent(&y));
+
+   // c's right child is now z
+   TEST_ASSERT_EQUAL_PTR(&x, c.left);
+   TEST_ASSERT_EQUAL_PTR(&z, c.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&c));
+   TEST_ASSERT_EQUAL(-1, avl_balance(&c));
+}
+
+static void test_avl_eject_2child_deep_successor(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, g, w, x, y, z, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    / \   \
+    *   x   g   u
+    *      / \
+    *     y   z
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL, 1);
+   avl_setup_test_node(&c, &x, &g,  &n, -1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   avl_setup_test_node(&g, &y, &z, &c,  0);
+   avl_setup_test_node(&y, NULL, NULL, &g, 0);
+   avl_setup_test_node(&z, NULL, NULL, &g, 0);
+
+   struct avl_node *res = __avl_eject(&root, &c, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(&c, res);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // y now replaces c
+   TEST_ASSERT_EQUAL_PTR(&x, y.left);
+   TEST_ASSERT_EQUAL_PTR(&g, y.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&y));
+   TEST_ASSERT_EQUAL(-1, avl_balance(&y));
+
+   // g new parent is y
+   TEST_ASSERT_EQUAL_PTR(&y, avl_parent(&g));
+   TEST_ASSERT_EQUAL_PTR(NULL, g.left);
+
+   // n's left child is now y
+   TEST_ASSERT_EQUAL_PTR(&y, n.left);
+   TEST_ASSERT_EQUAL_PTR(&w, n.right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&n));
+   TEST_ASSERT_EQUAL(1, avl_balance(&n));
+}
+
+static void test_avl_eject_left_child_leaf(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL, 0);
+   avl_setup_test_node(&c, &x, NULL,  &n, 1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res = __avl_eject(&root, &c, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(res, &c);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // x now replaces c
+   TEST_ASSERT_EQUAL_PTR(NULL, x.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, x.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&x));
+   TEST_ASSERT_EQUAL(0, avl_balance(&x));
+
+   // n's left child is now x
+   TEST_ASSERT_EQUAL_PTR(&x, n.left);
+   TEST_ASSERT_EQUAL_PTR(&w, n.right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&n));
+   TEST_ASSERT_EQUAL(-1, avl_balance(&n));
+}
+
+static void test_avl_eject_right_child_leaf(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL, 0);
+   avl_setup_test_node(&c, &x, NULL,  &n, 1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res = __avl_eject(&root, &w, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(res, &u);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // u now replaces w
+   TEST_ASSERT_EQUAL_PTR(NULL, u.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, u.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&u));
+   TEST_ASSERT_EQUAL(0, avl_balance(&u));
+
+   // n's right child is now u
+   TEST_ASSERT_EQUAL_PTR(&c, n.left);
+   TEST_ASSERT_EQUAL_PTR(&u, n.right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(&n));
+   TEST_ASSERT_EQUAL(1, avl_balance(&n));
+}
+
+static void test_avl_eject_leaf(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL, 0);
+   avl_setup_test_node(&c, &x, NULL,  &n, 1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res;
+
+
+   // --- TEST 1: eject (x) ---
+   res = __avl_eject(&root, &x, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(res, &c);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // c now leaf node
+   TEST_ASSERT_EQUAL_PTR(NULL, c.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, c.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&c));
+   TEST_ASSERT_EQUAL(0, avl_balance(&c));
+
+   // ancestor balance changed
+   TEST_ASSERT_EQUAL(-1, avl_balance(&n));
+
+
+   // --- TEST 2: eject (u) ---
+   res = __avl_eject(&root, &u, &__avl_dummy_augment);
+
+   TEST_ASSERT_EQUAL_PTR(res, &w);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // w now leaf node
+   TEST_ASSERT_EQUAL_PTR(NULL, w.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, w.right);
+   TEST_ASSERT_EQUAL_PTR(&n, avl_parent(&w));
+   TEST_ASSERT_EQUAL(0, avl_balance(&w));
+
+   // ancestor balance changed
+   TEST_ASSERT_EQUAL(0, avl_balance(&n));
+}
+
+
+static void test_avl_eject_linked_2child_shallow_successor(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, g, w, x, y, z, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    / \   \
+    *   x   g   u
+    *      / \
+    *     y   z
+    *
+    * inorder: x, c, y, g, z, n, w, u
+    */
+
+   root = (struct avl_root_linked) {
+      .root = {
+         .node = avl_linked_node(&n),
+      },
+      .first = &x,
+      .last = &u,
+   };
+
+   avl_setup_test_node_linked(&n, &c, &w, NULL, 1, &z, &w);
+   avl_setup_test_node_linked(&c, &x, &g,  &n, -1, &x, &y);
+   avl_setup_test_node_linked(&w, NULL, &u, &n, -1, &n, &u);
+
+   avl_setup_test_node_linked(&x, NULL, NULL, &c, 0, NULL, &c);
+   avl_setup_test_node_linked(&u, NULL, NULL, &w, 0, &w, NULL);
+
+   avl_setup_test_node_linked(&g, &y, &z, &c, 0, &y, &z);
+   avl_setup_test_node_linked(&y, NULL, NULL, &g, 0, &c, &g);
+   avl_setup_test_node_linked(&z, NULL, NULL, &g, 0, &g, &n);
+
+   avl_eject_linked(&root, &g);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+
+   // ancestor's balance unchanged
+   TEST_ASSERT_EQUAL( 1, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&c)));
+
+   // z now replaces g
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_linked_node(&z)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked_node(&z)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&c), avl_parent(avl_linked_node(&z)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&z)));
+
+   // y new parent is z
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&z), avl_parent(avl_linked_node(&y)));
+
+   // c's right child is now z
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&x), avl_linked_node(&c)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&z), avl_linked_node(&c)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&c)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&c)));
+}
+
+static void test_avl_eject_linked_2child_deep_successor(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, g, w, x, y, z, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    / \   \
+    *   x   g   u
+    *      / \
+    *     y   z
+    *
+    * inorder: x, c, y, g, z, n, w, u
+    */
+
+   root = (struct avl_root_linked) {
+      .root = {
+         .node = avl_linked_node(&n),
+      },
+      .first = &x,
+      .last = &u,
+   };
+
+   avl_setup_test_node_linked(&n, &c, &w, NULL, 1, &z, &w);
+   avl_setup_test_node_linked(&c, &x, &g,  &n, -1, &x, &y);
+   avl_setup_test_node_linked(&w, NULL, &u, &n, -1, &n, &u);
+
+   avl_setup_test_node_linked(&x, NULL, NULL, &c, 0, NULL, &c);
+   avl_setup_test_node_linked(&u, NULL, NULL, &w, 0, &w, NULL);
+
+   avl_setup_test_node_linked(&g, &y, &z, &c, 0, &y, &z);
+   avl_setup_test_node_linked(&y, NULL, NULL, &g, 0, &c, &g);
+   avl_setup_test_node_linked(&z, NULL, NULL, &g, 0, &g, &n);
+
+   avl_eject_linked(&root, &c);
+
+   // Root unchanged
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+
+   // y now replaces c
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&x), avl_linked_node(&y)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&g), avl_linked_node(&y)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&y)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&y)));
+
+   // g new parent is y
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_parent(avl_linked_node(&g)));
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked_node(&g)->left);
+
+   // n's left child is now y
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_linked_node(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&w), avl_linked_node(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_parent(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&n)));
+}
+
+static void test_avl_eject_linked_left_child_leaf(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *     /   \
+    *   c       w
+    *    \     /
+    *     x   u
+    *
+    * inorder: c, x, n, u, w
+    */
+
+   root = (struct avl_root_linked) {
+      .root = {
+         .node = avl_linked_node(&n),
+      },
+      .first = &c,
+      .last = &w,
+   };
+
+   avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &x, &u);
+   avl_setup_test_node_linked(&c, NULL, &x,  &n, -1, NULL, &x);
+   avl_setup_test_node_linked(&w, &u, NULL, &n, 1, &u, NULL);
+
+   avl_setup_test_node_linked(&x, NULL, NULL, &c, 0, &c, &n);
+   avl_setup_test_node_linked(&u, NULL, NULL, &w, 0, &n, &w);
+
+   avl_eject_linked(&root, &w);
+
+   // Root unchanged, but 'last' changed
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&u, avl_linked_node(root.last));
+
+   // u now replaces w
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&u)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&u)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&u)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&u)));
+
+   // n's right child is now u
+   TEST_ASSERT_EQUAL_PTR(&c, avl_linked_node(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(&u, avl_linked_node(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&n)));
+}
+
+static void test_avl_eject_linked_right_child_leaf(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *     /   \
+    *   c       w
+    *    \     /
+    *     x   u
+    *
+    * inorder: c, x, n, u, w
+    */
+
+   root = (struct avl_root_linked) {
+      .root = {
+         .node = avl_linked_node(&n),
+      },
+      .first = &c,
+      .last = &w,
+   };
+
+   avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &x, &u);
+   avl_setup_test_node_linked(&c, NULL, &x,  &n, -1, NULL, &x);
+   avl_setup_test_node_linked(&w, &u, NULL, &n, 1, &u, NULL);
+
+   avl_setup_test_node_linked(&x, NULL, NULL, &c, 0, &c, &n);
+   avl_setup_test_node_linked(&u, NULL, NULL, &w, 0, &n, &w);
+
+   avl_eject_linked(&root, &c);
+
+   // Root unchanged, but 'first' changed
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&x, avl_linked_node(root.first));
+
+   // x now replaces c
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&x)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&x)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&x)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&x)));
+
+   // n's left child is now x
+   TEST_ASSERT_EQUAL_PTR(&x, avl_linked_node(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(&w, avl_linked_node(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&n)));
+}
+
+static void test_avl_eject_linked_leaf(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    *
+    * inorder: x, c, n, w, u
+    */
+
+   root = (struct avl_root_linked) {
+      .root = {
+         .node = avl_linked_node(&n),
+      },
+      .first = &x,
+      .last = &u,
+   };
+
+   avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &c, &w);
+   avl_setup_test_node_linked(&c, &x, NULL,  &n, 1, &x, &n);
+   avl_setup_test_node_linked(&w, NULL, &u, &n, -1, &n, &u);
+
+   avl_setup_test_node_linked(&x, NULL, NULL, &c, 0, NULL, &c);
+   avl_setup_test_node_linked(&u, NULL, NULL, &w, 0, &w, NULL);
+
+
+   // --- TEST 1: eject (x) ---
+   avl_eject_linked(&root, &x);
+
+   // Root unchanged, but 'first' changed
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&c, avl_linked_node(root.first));
+
+   // c now leaf node
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&c)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&c)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&c)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&c)));
+
+   // ancestor balance changed
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&n)));
+
+
+   // --- TEST 2: eject (u) ---
+   avl_eject_linked(&root, &u);
+
+   // Root unchanged, but 'last' changed
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&w, avl_linked_node(root.last));
+
+   // w now leaf node
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&w)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&w)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&w)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&w)));
+
+   // ancestor balance changed
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&n)));
+}
+
+
+static void test_avl_subtree_height(void)
 {
 #ifdef NDEBUG
-   TEST_IGNORE();
+   TEST_IGNORE_MESSAGE("function not available in NDEBUG");
 
 #else
    struct avl_root root = AVL_ROOT_INIT;
@@ -2843,19 +3525,19 @@ static void test_avl_subtree_height()
    avl_setup_test_node(&y, NULL, NULL, &g, 0);
    avl_setup_test_node(&z, NULL, NULL, &g, 0);
 
-   TEST_ASSERT_EQUAL(avl_verify_recursive(&n), avl_subtree_height(&n));
-   TEST_ASSERT_EQUAL(avl_verify_recursive(&c), avl_subtree_height(&c));
-   TEST_ASSERT_EQUAL(avl_verify_recursive(&g), avl_subtree_height(&g));
-   TEST_ASSERT_EQUAL(avl_verify_recursive(&w), avl_subtree_height(&w));
-   TEST_ASSERT_EQUAL(avl_verify_recursive(&x), avl_subtree_height(&x));
+   TEST_ASSERT_EQUAL(avl_verify_recursive(&n, &dummy_augment_verify), avl_subtree_height(&n));
+   TEST_ASSERT_EQUAL(avl_verify_recursive(&c, &dummy_augment_verify), avl_subtree_height(&c));
+   TEST_ASSERT_EQUAL(avl_verify_recursive(&g, &dummy_augment_verify), avl_subtree_height(&g));
+   TEST_ASSERT_EQUAL(avl_verify_recursive(&w, &dummy_augment_verify), avl_subtree_height(&w));
+   TEST_ASSERT_EQUAL(avl_verify_recursive(&x, &dummy_augment_verify), avl_subtree_height(&x));
 
 #endif /* NDEBUG */
 }
 
-static void test_avl_subtree_size()
+static void test_avl_subtree_size(void)
 {
 #ifdef NDEBUG
-   TEST_IGNORE();
+   TEST_IGNORE_MESSAGE("function not available in NDEBUG");
 
 #else
    struct avl_root root = AVL_ROOT_INIT;
@@ -2894,10 +3576,10 @@ static void test_avl_subtree_size()
 #endif /* NDEBUG */
 }
 
-static void test_avl_verify()
+static void test_avl_verify(void)
 {
 #ifdef NDEBUG
-   TEST_IGNORE();
+   TEST_IGNORE_MESSAGE("function not available in NDEBUG");
 
 #else
    struct avl_root root = AVL_ROOT_INIT;
@@ -2960,6 +3642,362 @@ static void test_avl_verify()
 #endif /* NDEBUG */
 }
 
+#ifndef AVL_AUGMENT_TEST
+#define AVL_AUGMENT_TEST
+
+#define AVL_AUGMENT_TEST_HELPER
+#define AVL_AUGMENT_TEST_RAND_SIZE  100u
+#define AVL_AUGMENT_TEST_RAND_OPS   300u
+#define AVL_AUGMENT_TEST_RAND_SEED1 1672u
+#define AVL_AUGMENT_TEST_RAND_SEED2 67420u
+
+struct os_node
+{
+   struct avl_node avl;
+   size_t size;
+   int key;
+};
+
+static AVL_AUGMENT_TEST_HELPER void os_augment_update(struct avl_node *node)
+{
+   assert(node);
+   struct os_node *osn = avl_entry(node, struct os_node, avl);
+
+   size_t left_size = (node->left)
+      ? avl_entry(node->left, struct os_node, avl)->size
+      : 0;
+
+   size_t right_size = (node->right)
+      ? avl_entry(node->right, struct os_node, avl)->size
+      : 0;
+
+   osn->size = left_size + right_size + 1;
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_augment_copy(struct avl_node *old, struct avl_node *new)
+{
+   assert(old && new);
+
+   struct os_node *os_old = avl_entry(old, struct os_node, avl);
+   struct os_node *os_new = avl_entry(new, struct os_node, avl);
+
+   os_new->size = os_old->size;
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_augment_rotate(struct avl_node *old, struct avl_node *new)
+{
+   os_augment_update(old);
+   os_augment_update(new);
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_augment_propagate(struct avl_node *node, struct avl_node *stop)
+{
+   while (node != stop)
+   {
+      os_augment_update(node);
+      node = avl_parent(node);
+   }
+}
+
+const struct avl_augment_callbacks os_callbacks = {
+   .update =    os_augment_update,
+   .copy =      os_augment_copy,
+   .rotate =    os_augment_rotate,
+   .propagate = os_augment_propagate,
+};
+
+static AVL_AUGMENT_TEST_HELPER void os_insert(struct avl_root *root, struct os_node *osn)
+{
+   assert(root && osn);
+
+   struct avl_node **link = &root->node;
+   struct avl_node *parent = NULL;
+   bool isleft;
+
+   while (*link)
+   {
+      parent = *link;
+      int key = avl_entry(parent, struct os_node, avl)->key;
+
+      if (osn->key < key)
+      {
+         link = &parent->left;
+         isleft = true;
+      }
+      else
+      {
+         link = &parent->right;
+         isleft = false;
+      }
+   }
+
+   osn->size = 1;
+   avl_link_node(&osn->avl, parent, link);
+   avl_insert_rebalance_augmented(root, parent, isleft, &os_callbacks);
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_eject(struct avl_root *root, struct os_node *osn)
+{
+   avl_eject_augmented(root, &osn->avl, &os_callbacks);
+}
+
+static AVL_AUGMENT_TEST_HELPER bool os_verify(struct avl_node *subroot)
+{
+   if (!subroot)
+      return true;
+
+   size_t size = 0;
+   const struct avl_node *node = subroot;
+
+   while (node != avl_parent(subroot)) // pre-order traversal
+   {
+      size++;
+
+      if (node->left)
+      {
+         node = node->left;
+      }
+      else if (node->right)
+      {
+         node = node->right;
+      }
+      else
+      {
+         while (node != avl_parent(subroot))
+         {
+            const struct avl_node *parent = avl_parent(node);
+            if (node != subroot && parent->left == node && parent->right)
+            {
+               node = parent->right;
+               break;
+            }
+            node = parent;
+         }
+      }
+   }
+
+   return size == avl_entry(subroot, struct os_node, avl)->size;
+}
+
+static void test_avl_augmented_insert_eject(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct os_node nodes[AVL_AUGMENT_TEST_RAND_SIZE];
+   bool intree[AVL_AUGMENT_TEST_RAND_SIZE] = {0};
+
+   pcg32_random_t rng;
+   pcg32_srandom_r(&rng, AVL_AUGMENT_TEST_RAND_SEED1, AVL_AUGMENT_TEST_RAND_SEED2);
+
+   for (size_t i = 0; i < AVL_AUGMENT_TEST_RAND_SIZE; i++)
+   {
+      nodes[i].key = pcg32_random_r(&rng);
+      avl_node_init(&nodes[i].avl);
+   }
+
+   for (size_t i = 0; i < AVL_AUGMENT_TEST_RAND_OPS; i++)
+   {
+      size_t k = pcg32_boundedrand_r(&rng, AVL_AUGMENT_TEST_RAND_SIZE);
+
+      if (intree[k])
+      {
+         os_eject(&root, &nodes[k]);
+         intree[k] = false;
+      }
+      else
+      {
+         os_insert(&root, &nodes[k]);
+         intree[k] = true;
+      }
+
+      TEST_ASSERT_TRUE(avl_verify_recursive(root.node, &os_verify) != -1);
+   }
+}
+
+
+struct os_node_linked
+{
+   struct avl_node_linked avl;
+   size_t size;
+   int key;
+};
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_augment_update(struct avl_node *node)
+{
+   assert(node);
+
+   struct os_node_linked *osn = avl_linked_entry(avl_linked_wrap_node(node), struct os_node_linked, avl);
+   size_t size = 1;
+
+   if (node->left)
+      size += avl_linked_entry(avl_linked_wrap_node(node->left), struct os_node_linked, avl)->size;
+
+   if (node->right)
+      size += avl_linked_entry(avl_linked_wrap_node(node->right), struct os_node_linked, avl)->size;
+
+   osn->size = size;
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_augment_copy(struct avl_node *old, struct avl_node *new)
+{
+   assert(old && new);
+
+   struct os_node_linked *os_old = avl_linked_entry(avl_linked_wrap_node(old), struct os_node_linked, avl);
+   struct os_node_linked *os_new = avl_linked_entry(avl_linked_wrap_node(new), struct os_node_linked, avl);
+
+   os_new->size = os_old->size;
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_augment_rotate(struct avl_node *old, struct avl_node *new)
+{
+   os_linked_augment_update(old);
+   os_linked_augment_update(new);
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_augment_propagate(struct avl_node *node, struct avl_node *stop)
+{
+   while (node != stop)
+   {
+      os_linked_augment_update(node);
+      node = avl_parent(node);
+   }
+}
+
+const struct avl_augment_callbacks os_linked_callbacks = {
+   .update =    os_linked_augment_update,
+   .copy =      os_linked_augment_copy,
+   .rotate =    os_linked_augment_rotate,
+   .propagate = os_linked_augment_propagate,
+};
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *root, struct os_node_linked *osn)
+{
+   assert(root && osn);
+
+   struct avl_node **link = &avl_linked_root(root)->node;
+   struct avl_node_linked *parent = NULL;
+   bool isleft = false, isfirst = true, islast = true;
+
+   while (*link)
+   {
+      parent = avl_linked_wrap_node(*link);
+      int key = avl_linked_entry(parent, struct os_node_linked, avl)->key;
+
+      if (osn->key < key)
+      {
+         link = &avl_linked_node(parent)->left;
+         isleft = true;
+         islast = false;
+      }
+      else
+      {
+         link = &avl_linked_node(parent)->right;
+         isleft = false;
+         isfirst = false;
+      }
+   }
+
+   if (isfirst)
+      root->first = &osn->avl;
+
+   if (islast)
+      root->last = &osn->avl;
+
+   osn->size = 1;
+   avl_link_node_linked(&osn->avl, parent, link, isleft);
+   avl_insert_rebalance_augmented(
+      avl_linked_root(root),
+      avl_linked_node(parent),
+      isleft,
+      &os_linked_callbacks
+   );
+}
+
+static AVL_AUGMENT_TEST_HELPER void os_linked_eject(struct avl_root_linked *root, struct os_node_linked *osn)
+{
+   avl_eject_linked_augmented(root, &osn->avl, &os_linked_callbacks);
+}
+
+static AVL_AUGMENT_TEST_HELPER bool os_linked_verify(struct avl_node *subroot)
+{
+   if (!subroot)
+      return true;
+
+   size_t size = 0;
+   const struct avl_node *node = subroot;
+
+   while (node != avl_parent(subroot)) // pre-order traversal
+   {
+      size++;
+
+      if (node->left)
+      {
+         node = node->left;
+      }
+      else if (node->right)
+      {
+         node = node->right;
+      }
+      else
+      {
+         while (node != avl_parent(subroot))
+         {
+            const struct avl_node *parent = avl_parent(node);
+            if (node != subroot && parent->left == node && parent->right)
+            {
+               node = parent->right;
+               break;
+            }
+            node = parent;
+         }
+      }
+   }
+
+   return size == avl_linked_entry(avl_linked_wrap_node(subroot), struct os_node_linked, avl)->size;
+}
+
+static void test_avl_linked_augmented_insert_eject(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct os_node_linked nodes[AVL_AUGMENT_TEST_RAND_SIZE];
+   bool intree[AVL_AUGMENT_TEST_RAND_SIZE] = {0};
+
+   pcg32_random_t rng;
+   pcg32_srandom_r(&rng, AVL_AUGMENT_TEST_RAND_SEED1, AVL_AUGMENT_TEST_RAND_SEED2);
+
+   for (size_t i = 0; i < AVL_AUGMENT_TEST_RAND_SIZE; i++)
+   {
+      nodes[i].key = pcg32_random_r(&rng);
+      avl_node_linked_init(&nodes[i].avl);
+   }
+
+   for (size_t i = 0; i < AVL_AUGMENT_TEST_RAND_OPS; i++)
+   {
+      size_t k = pcg32_boundedrand_r(&rng, AVL_AUGMENT_TEST_RAND_SIZE);
+
+      if (intree[k])
+      {
+         os_linked_eject(&root, &nodes[k]);
+         intree[k] = false;
+      }
+      else
+      {
+         os_linked_insert(&root, &nodes[k]);
+         intree[k] = true;
+      }
+
+      TEST_ASSERT_TRUE(avl_verify_recursive(avl_linked_root(&root)->node, &os_linked_verify) != -1);
+   }
+}
+
+#undef AVL_AUGMENT_TEST_RAND_SEED1
+#undef AVL_AUGMENT_TEST_RAND_SEED2
+#undef AVL_AUGMENT_TEST_RAND_SIZE
+#undef AVL_AUGMENT_TEST_RAND_OPS
+#undef AVL_AUGMENT_TEST_HELPER
+
+#endif /* AVL_AUGMENT_TEST */
+
+
 int main(void)
 {
    UnityBegin("test/bit.h");
@@ -2974,9 +4012,24 @@ int main(void)
    RUN_TEST(test_avl_insert_rebalance_RR);
    RUN_TEST(test_avl_insert_rebalance_RL);
 
+   RUN_TEST(test_avl_eject_2child_shallow_successor);
+   RUN_TEST(test_avl_eject_2child_deep_successor);
+   RUN_TEST(test_avl_eject_left_child_leaf);
+   RUN_TEST(test_avl_eject_right_child_leaf);
+   RUN_TEST(test_avl_eject_leaf);
+
+   RUN_TEST(test_avl_eject_linked_2child_shallow_successor);
+   RUN_TEST(test_avl_eject_linked_2child_deep_successor);
+   RUN_TEST(test_avl_eject_linked_left_child_leaf);
+   RUN_TEST(test_avl_eject_linked_right_child_leaf);
+   RUN_TEST(test_avl_eject_linked_leaf);
+
    RUN_TEST(test_avl_subtree_height);
    RUN_TEST(test_avl_subtree_size);
    RUN_TEST(test_avl_verify);
+
+   RUN_TEST(test_avl_augmented_insert_eject);
+   RUN_TEST(test_avl_linked_augmented_insert_eject);
 
    return UnityEnd();
 }

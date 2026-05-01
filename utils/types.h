@@ -267,7 +267,7 @@
  */
 #if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
    #define __container_of_unqual(ptr, type, member) __extension__ ({ \
-      typeof(((type *)0)->member) *__mcumptr = (ptr);                \
+      const typeof(((type *)0)->member) *__mcumptr = (ptr);          \
       __container_of_raw(__mcumptr, type, member);                   \
    })
 
