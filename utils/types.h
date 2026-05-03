@@ -221,7 +221,7 @@
  *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
  */
 #ifndef typecheck_expr
-#define typecheck_expr(type, var, expr) (typecheck(type, var), (expr))
+#define typecheck_expr(type, var, expr) ((void)typecheck(type, var), (expr))
 #endif /* typecheck_expr */
 
 

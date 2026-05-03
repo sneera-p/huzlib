@@ -404,9 +404,14 @@
  * HUZLIB_PURE_HINTS
  * --------------------------------------
  * Function attribute hints for optimization based on side-effect analysis.
- * 
- * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
- * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append before return type:
+ *    __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append after parameter list:
+ *    __huzlib_unsequenced__  - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_reproducible__ - no side effects, may read global memory (e.g., strlen)
  *
  * Falls back to empty for unsupported compilers.
  */
@@ -415,11 +420,17 @@
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
-   #define __huzlib_const__   [[unsequenced]]
-   #define __huzlib_pure__    [[reproducible]]
+   #define __huzlib_unsequenced__  [[unsequenced]]
+   #define __huzlib_reproducible__ [[reproducible]]
 
+#else
 
-#elif defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
+   #define __huzlib_unsequenced__
+   #define __huzlib_reproducible__
+
+#endif
+
+#if defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
 
    #define __huzlib_const__   __attribute__((const))
    #define __huzlib_pure__    __attribute__((pure))
@@ -442,6 +453,8 @@
 #endif
 
 #endif /* HUZLIB_PURE_HINTS */
+
+
 
 
 
@@ -596,7 +609,7 @@ typedef unsigned long long __huzlib_ullong;
 #define HUZLIB_BIT_INTERNAL_GENERIC_PROTO(type, func)       func##_##type
 
 #define HUZLIB_BIT_INTERNAL_ASSERT_UNSIGNED(type, ...)      _Static_assert((type)(-1) > 0, #type " is not unsigned");
-#define HUZLIB_BIT_INTERNAL_DECLARE_PROTO(type, name, ...)  extern HUZLIB_BIT_API type bit_##name##_##type(__VA_ARGS__);
+#define HUZLIB_BIT_INTERNAL_DECLARE_PROTO(type, name, ...)  extern HUZLIB_BIT_API type bit_##name##_##type(__VA_ARGS__) __huzlib_unsequenced__;
 
 
 
@@ -738,7 +751,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
     */
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS_DEFAULT(type)          \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                            \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__     \
    {                                                                                \
       if (__huzlib_unlikely__(w == 0))                                              \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                               \
@@ -784,7 +797,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS_DEFAULT(type)           \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                             \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__      \
    {                                                                                \
       if (__huzlib_unlikely__(w == 0))                                              \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                               \
@@ -864,7 +877,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
     */
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS_DEFAULT(type)          \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                            \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__     \
    {                                                                                \
       if (__huzlib_unlikely__(w == 0))                                              \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                               \
@@ -915,7 +928,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS_DEFAULT(type)           \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                             \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__      \
    {                                                                                \
       if (__huzlib_unlikely__(w == 0))                                              \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                               \
@@ -969,7 +982,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
 
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES_DEFAULT(type)                 \
-HUZLIB_BIT_API type bit_count_ones_##type(type w)                                   \
+HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__            \
 {                                                                                   \
    if (__huzlib_unlikely__(w == 0))                                                 \
       return 0;                                                                     \
@@ -1016,7 +1029,7 @@ HUZLIB_BIT_API type bit_count_ones_##type(type w)                               
 }
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)    \
-HUZLIB_BIT_API type bit_first_trailing_one_##type(type w)                           \
+HUZLIB_BIT_API type bit_first_trailing_one_##type(type w) __huzlib_unsequenced__    \
 {                                                                                   \
    if (__huzlib_unlikely__(w == 0))                                                 \
       return 0;                                                                     \
@@ -1025,7 +1038,7 @@ HUZLIB_BIT_API type bit_first_trailing_one_##type(type w)                       
 }
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)     \
-HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                            \
+HUZLIB_BIT_API type bit_first_leading_one_##type(type w) __huzlib_unsequenced__     \
 {                                                                                   \
    if (__huzlib_unlikely__(w == 0))                                                 \
       return 0;                                                                     \
@@ -1048,64 +1061,64 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w)                        
 #if defined(__NVCC__) && defined(__CUDA_ARCH__) && 0
    #include <cuda_runtime.h>
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)       \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                      \
-   {                                                                          \
-      if (__huzlib_unlikely__(w == 0))                                        \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                         \
-                                                                              \
-      switch (sizeof(type))                                                   \
-      {                                                                       \
-         case 1:                                                              \
-         case 2:                                                              \
-         case 4:  return __ffs((uint32_t)w) - 1;                              \
-         case 8:  return __ffsll((uint64_t)w) - 1;                            \
-      }                                                                       \
-                                                                              \
-      unreachable();                                                          \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)                \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__        \
+   {                                                                                   \
+      if (__huzlib_unlikely__(w == 0))                                                 \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                                  \
+                                                                                       \
+      switch (sizeof(type))                                                            \
+      {                                                                                \
+         case 1:                                                                       \
+         case 2:                                                                       \
+         case 4:  return __ffs((uint32_t)w) - 1;                                       \
+         case 8:  return __ffsll((uint64_t)w) - 1;                                     \
+      }                                                                                \
+                                                                                       \
+      unreachable();                                                                   \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)        \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                       \
-   {                                                                          \
-      if (__huzlib_unlikely__(w == 0))                                        \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                         \
-                                                                              \
-      switch (sizeof(type))                                                   \
-      {                                                                       \
-         case 1:  return __clz((uint32_t)w) - 24;                             \
-         case 2:  return __clz((uint32_t)w) - 16;                             \
-         case 4:  return __clz((uint32_t)w);                                  \
-         case 8:  return __clzll((uint64_t)w);                                \
-      }                                                                       \
-                                                                              \
-      unreachable();                                                          \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)                 \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__         \
+   {                                                                                   \
+      if (__huzlib_unlikely__(w == 0))                                                 \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                                  \
+                                                                                       \
+      switch (sizeof(type))                                                            \
+      {                                                                                \
+         case 1:  return __clz((uint32_t)w) - 24;                                      \
+         case 2:  return __clz((uint32_t)w) - 16;                                      \
+         case 4:  return __clz((uint32_t)w);                                           \
+         case 8:  return __clzll((uint64_t)w);                                         \
+      }                                                                                \
+                                                                                       \
+      unreachable();                                                                   \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)           \
-   HUZLIB_BIT_API type bit_count_ones_##type(type w)                          \
-   {                                                                          \
-      switch (sizeof(type))                                                   \
-      {                                                                       \
-         case 1:                                                              \
-         case 2:                                                              \
-         case 4:  return __popc((uint32_t)w);                                 \
-         case 8:  return __popcll((uint64_t)w);                               \
-      }                                                                       \
-      unreachable();                                                          \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)                    \
+   HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__            \
+   {                                                                                   \
+      switch (sizeof(type))                                                            \
+      {                                                                                \
+         case 1:                                                                       \
+         case 2:                                                                       \
+         case 4:  return __popc((uint32_t)w);                                          \
+         case 8:  return __popcll((uint64_t)w);                                        \
+      }                                                                                \
+      unreachable();                                                                   \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)   \
-   HUZLIB_BIT_API type bit_first_trailing_one_##type(type w)                  \
-   {                                                                          \
-      switch (sizeof(type))                                                   \
-      {                                                                       \
-         case 1:                                                              \
-         case 2:                                                              \
-         case 4:  return __ffs((uint32_t)w);                                  \
-         case 8:  return __ffsll((uint64_t)w);                                \
-      }                                                                       \
-      unreachable();                                                          \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)            \
+   HUZLIB_BIT_API type bit_first_trailing_one_##type(type w) __huzlib_unsequenced__    \
+   {                                                                                   \
+      switch (sizeof(type))                                                            \
+      {                                                                                \
+         case 1:                                                                       \
+         case 2:                                                                       \
+         case 4:  return __ffs((uint32_t)w);                                           \
+         case 8:  return __ffsll((uint64_t)w);                                         \
+      }                                                                                \
+      unreachable();                                                                   \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)  HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
@@ -1124,7 +1137,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
 #if defined(__INTEL_LLVM_COMPILER) || (defined(__INTEL_COMPILER) && defined(__GNUC__)) || (defined(__ARMCOMPILER_VERSION) && __ARMCOMPILER_VERSION >= 600000) || (defined(__ibmxl__) && __ibmxl__ >= 0x10010000) || (defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4))) || defined(__clang__)
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)                                     \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                                                    \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__                             \
    {                                                                                                        \
       if (__huzlib_unlikely__(w == 0))                                                                      \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                                                       \
@@ -1137,7 +1150,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)                                      \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                                                     \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__                              \
    {                                                                                                        \
       if (__huzlib_unlikely__(w == 0))                                                                      \
          return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                                                       \
@@ -1152,7 +1165,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)                                         \
-   HUZLIB_BIT_API type bit_count_ones_##type(type w)                                                        \
+   HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__                                 \
    {                                                                                                        \
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
@@ -1161,7 +1174,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)                                 \
-   HUZLIB_BIT_API type bit_first_trailing_one_##type(type w)                                                \
+   HUZLIB_BIT_API type bit_first_trailing_one_##type(type w) __huzlib_unsequenced__                         \
    {                                                                                                        \
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_ffs((unsigned int)w);                \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_ffsl((unsigned long)w);              \
@@ -1181,51 +1194,51 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
 #elif defined(__xlC__) || defined(__ibmxl__)
    #include <builtins.h>
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...) \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                \
-   {                                                                    \
-      if (__huzlib_unlikely__(w == 0))                                  \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                   \
-                                                                        \
-      switch (sizeof(type))                                             \
-      {                                                                 \
-         case 1:                                                        \
-         case 2:                                                        \
-         case 4:  return __cnttz4((uint32_t)w);                         \
-         case 8:  return __cnttz8((uint64_t)w);                         \
-      }                                                                 \
-                                                                        \
-      unreachable();                                                    \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)          \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__  \
+   {                                                                             \
+      if (__huzlib_unlikely__(w == 0))                                           \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                            \
+                                                                                 \
+      switch (sizeof(type))                                                      \
+      {                                                                          \
+         case 1:                                                                 \
+         case 2:                                                                 \
+         case 4:  return __cnttz4((uint32_t)w);                                  \
+         case 8:  return __cnttz8((uint64_t)w);                                  \
+      }                                                                          \
+                                                                                 \
+      unreachable();                                                             \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)  \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                 \
-   {                                                                    \
-      if (__huzlib_unlikely__(w == 0))                                  \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                   \
-                                                                        \
-      switch (sizeof(type))                                             \
-      {                                                                 \
-         case 1:  return __cntlz4((uint32_t)w) - 24;                    \
-         case 2:  return __cntlz4((uint32_t)w) - 16;                    \
-         case 4:  return __cntlz4((uint32_t)w);                         \
-         case 8:  return __cntlz8((uint64_t)w);                         \
-      }                                                                 \
-                                                                        \
-      unreachable();                                                    \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)           \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__   \
+   {                                                                             \
+      if (__huzlib_unlikely__(w == 0))                                           \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                            \
+                                                                                 \
+      switch (sizeof(type))                                                      \
+      {                                                                          \
+         case 1:  return __cntlz4((uint32_t)w) - 24;                             \
+         case 2:  return __cntlz4((uint32_t)w) - 16;                             \
+         case 4:  return __cntlz4((uint32_t)w);                                  \
+         case 8:  return __cntlz8((uint64_t)w);                                  \
+      }                                                                          \
+                                                                                 \
+      unreachable();                                                             \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)     \
-   HUZLIB_BIT_API type bit_count_ones_##type(type w)                    \
-   {                                                                    \
-      switch (sizeof(type))                                             \
-      {                                                                 \
-         case 1:                                                        \
-         case 2:                                                        \
-         case 4:  return __popcnt4((uint32_t)w);                        \
-         case 8:  return __popcnt8((uint64_t)w);                        \
-      }                                                                 \
-      unreachable();                                                    \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)              \
+   HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__      \
+   {                                                                             \
+      switch (sizeof(type))                                                      \
+      {                                                                          \
+         case 1:                                                                 \
+         case 2:                                                                 \
+         case 4:  return __popcnt4((uint32_t)w);                                 \
+         case 8:  return __popcnt8((uint64_t)w);                                 \
+      }                                                                          \
+      unreachable();                                                             \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE(type, ...)   HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_TRAILING_ONE_CTZ_FALLBACK(type)
@@ -1340,56 +1353,56 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
 
    #endif /* fast intrinsics (only modern x86) */
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...) \
-   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w)                \
-   {                                                                    \
-      type ret;                                                         \
-      if (__huzlib_unlikely__(w == 0))                                  \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                   \
-                                                                        \
-      switch (sizeof(type))                                             \
-      {                                                                 \
-         case 1:                                                        \
-         case 2:     HUZLIB_BIT_IMPL_CTZ_16(&ret, w);    break;         \
-         case 4:     HUZLIB_BIT_IMPL_CTZ_32(&ret, w);    break;         \
-         case 8:     HUZLIB_BIT_IMPL_CTZ_64(&ret, w);    break;         \
-         default:    unreachable();                      break;         \
-      }                                                                 \
-      return ret;                                                       \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_TRAILING_ZEROS(type, ...)          \
+   HUZLIB_BIT_API type bit_trailing_zeros_##type(type w) __huzlib_unsequenced__  \
+   {                                                                             \
+      type ret;                                                                  \
+      if (__huzlib_unlikely__(w == 0))                                           \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                            \
+                                                                                 \
+      switch (sizeof(type))                                                      \
+      {                                                                          \
+         case 1:                                                                 \
+         case 2:     HUZLIB_BIT_IMPL_CTZ_16(&ret, w);    break;                  \
+         case 4:     HUZLIB_BIT_IMPL_CTZ_32(&ret, w);    break;                  \
+         case 8:     HUZLIB_BIT_IMPL_CTZ_64(&ret, w);    break;                  \
+         default:    unreachable();                      break;                  \
+      }                                                                          \
+      return ret;                                                                \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)        \
-   HUZLIB_BIT_API type bit_leading_zeros_##type(type w)                       \
-   {                                                                          \
-      type ret;                                                               \
-      if (__huzlib_unlikely__(w == 0))                                        \
-         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                         \
-                                                                              \
-      switch (sizeof(type))                                                   \
-      {                                                                       \
-         case 1:     HUZLIB_BIT_IMPL_CLZ_16(&ret, w);    ret -= 8;   break;   \
-         case 2:     HUZLIB_BIT_IMPL_CLZ_16(&ret, w);                break;   \
-         case 4:     HUZLIB_BIT_IMPL_CLZ_32(&ret, w);                break;   \
-         case 8:     HUZLIB_BIT_IMPL_CLZ_64(&ret, w);                break;   \
-         default:    unreachable();                                  break;   \
-      }                                                                       \
-      return ret;                                                             \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_LEADING_ZEROS(type, ...)           \
+   HUZLIB_BIT_API type bit_leading_zeros_##type(type w) __huzlib_unsequenced__   \
+   {                                                                             \
+      type ret;                                                                  \
+      if (__huzlib_unlikely__(w == 0))                                           \
+         return HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type);                            \
+                                                                                 \
+      switch (sizeof(type))                                                      \
+      {                                                                          \
+         case 1:     HUZLIB_BIT_IMPL_CLZ_16(&ret, w);    ret -= 8;   break;      \
+         case 2:     HUZLIB_BIT_IMPL_CLZ_16(&ret, w);                break;      \
+         case 4:     HUZLIB_BIT_IMPL_CLZ_32(&ret, w);                break;      \
+         case 8:     HUZLIB_BIT_IMPL_CLZ_64(&ret, w);                break;      \
+         default:    unreachable();                                  break;      \
+      }                                                                          \
+      return ret;                                                                \
    }
 
    #ifdef HUZLIB_BIT_INTERNAL_MVSC_HAS_POPC
-      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)  \
-      HUZLIB_BIT_API type bit_count_ones_##type(type w)                 \
-      {                                                                 \
-         type ret;                                                      \
-         switch (sizeof(type))                                          \
-         {                                                              \
-            case 1:                                                     \
-            case 2:  HUZLIB_BIT_IMPL_POPC_16(&ret, w);   break;         \
-            case 4:  HUZLIB_BIT_IMPL_POPC_32(&ret, w);   break;         \
-            case 8:  HUZLIB_BIT_IMPL_POPC_64(&ret, w);   break;         \
-            default: unreachable();                      break;         \
-         }                                                              \
-         return ret;                                                    \
+      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)           \
+      HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__   \
+      {                                                                          \
+         type ret;                                                               \
+         switch (sizeof(type))                                                   \
+         {                                                                       \
+            case 1:                                                              \
+            case 2:  HUZLIB_BIT_IMPL_POPC_16(&ret, w);   break;                  \
+            case 4:  HUZLIB_BIT_IMPL_POPC_32(&ret, w);   break;                  \
+            case 8:  HUZLIB_BIT_IMPL_POPC_64(&ret, w);   break;                  \
+            default: unreachable();                      break;                  \
+         }                                                                       \
+         return ret;                                                             \
       }
    #else
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)        HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES_DEFAULT(type)
@@ -1422,7 +1435,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)    HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_COUNT_ONES(type, ...)                                         \
-   HUZLIB_BIT_API type bit_count_ones_##type(type w)                                                        \
+   HUZLIB_BIT_API type bit_count_ones_##type(type w) __huzlib_unsequenced__                                 \
    {                                                                                                        \
       if (sizeof(type) <= sizeof(unsigned int))       return __builtin_popcount((unsigned int)w);           \
       if (sizeof(type) == sizeof(unsigned long))      return __builtin_popcountl((unsigned long)w);         \
@@ -1446,7 +1459,7 @@ _Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
 
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_WIDTH(type, ...)                                     \
-HUZLIB_BIT_API type bit_width_##type(type w)                                                    \
+HUZLIB_BIT_API type bit_width_##type(type w) __huzlib_unsequenced__                             \
 {                                                                                               \
    if (__huzlib_unlikely__(w == 0))                                                             \
       return 0;                                                                                 \
@@ -1455,7 +1468,7 @@ HUZLIB_BIT_API type bit_width_##type(type w)                                    
 }
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_CEIL(type, ...)                                      \
-HUZLIB_BIT_API type bit_ceil_##type(type w)                                                     \
+HUZLIB_BIT_API type bit_ceil_##type(type w) __huzlib_unsequenced__                              \
 {                                                                                               \
    if (__huzlib_unlikely__(w == 0))                                                             \
       return 1;                                                                                 \
@@ -1464,7 +1477,7 @@ HUZLIB_BIT_API type bit_ceil_##type(type w)                                     
 }
 
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR(type, ...)                                     \
-HUZLIB_BIT_API type bit_floor_##type(type w)                                                    \
+HUZLIB_BIT_API type bit_floor_##type(type w) __huzlib_unsequenced__                             \
 {                                                                                               \
    if (__huzlib_unlikely__(w == 0))                                                             \
       return 0;                                                                                 \
@@ -1577,72 +1590,72 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
 
    #if defined(_WIN64) || defined(_M_X64) || defined(_M_AMD64) || defined(__x86_64__) || defined(__amd64__)
 
-      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)          \
-      HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot)       \
-      {                                                                          \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-         type ret;                                                               \
-         switch(sizeof(type))                                                    \
-         {                                                                       \
-            case 1:  ret = _rotl8(w, rot);                           break;      \
-            case 2:  ret = _rotl16(w, rot);                          break;      \
-            case 4:  ret = _rotl(w, rot);                            break;      \
-            case 8:  ret = _rotl64(w, rot);                          break;      \
-            case 16: HUZLIB_BIT_IMPL_ROTL_128_SPLIT(&ret, w, rot);   break;      \
-            default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);     break;      \
-         }                                                                       \
-         return ret;                                                             \
+      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                            \
+      HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__  \
+      {                                                                                            \
+         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         type ret;                                                                                 \
+         switch(sizeof(type))                                                                      \
+         {                                                                                         \
+            case 1:  ret = _rotl8(w, rot);                           break;                        \
+            case 2:  ret = _rotl16(w, rot);                          break;                        \
+            case 4:  ret = _rotl(w, rot);                            break;                        \
+            case 8:  ret = _rotl64(w, rot);                          break;                        \
+            case 16: HUZLIB_BIT_IMPL_ROTL_128_SPLIT(&ret, w, rot);   break;                        \
+            default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);     break;                        \
+         }                                                                                         \
+         return ret;                                                                               \
       }
 
-      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)         \
-      HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot)      \
-      {                                                                          \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-         type ret;                                                               \
-         switch(sizeof(type))                                                    \
-         {                                                                       \
-            case 1:  ret = _rotr8(w, rot);                           break;      \
-            case 2:  ret = _rotr16(w, rot);                          break;      \
-            case 4:  ret = _rotr(w, rot);                            break;      \
-            case 8:  ret = _rotr64(w, rot);                          break;      \
-            case 16: HUZLIB_BIT_IMPL_ROTR_128_SPLIT(&ret, w, rot);   break;      \
-            default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);     break;      \
-         }                                                                       \
-         return ret;                                                             \
+      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                           \
+      HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__ \
+      {                                                                                            \
+         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         type ret;                                                                                 \
+         switch(sizeof(type))                                                                      \
+         {                                                                                         \
+            case 1:  ret = _rotr8(w, rot);                           break;                        \
+            case 2:  ret = _rotr16(w, rot);                          break;                        \
+            case 4:  ret = _rotr(w, rot);                            break;                        \
+            case 8:  ret = _rotr64(w, rot);                          break;                        \
+            case 16: HUZLIB_BIT_IMPL_ROTR_128_SPLIT(&ret, w, rot);   break;                        \
+            default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);     break;                        \
+         }                                                                                         \
+         return ret;                                                                               \
       }
 
    #else
 
-      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)          \
-      HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot)       \
-      {                                                                          \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-         type ret;                                                               \
-         switch(sizeof(type))                                                    \
-         {                                                                       \
-            case 1:  ret = _rotl8(w, rot);                           break;      \
-            case 2:  ret = _rotl16(w, rot);                          break;      \
-            case 4:  ret = _rotl(w, rot);                            break;      \
-            case 8:  HUZLIB_BIT_IMPL_ROTL_64_SPLIT(&ret, w, rot);    break;      \
-            default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);     break;      \
-         }                                                                       \
-         return ret;                                                             \
+      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                            \
+      HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__  \
+      {                                                                                            \
+         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         type ret;                                                                                 \
+         switch(sizeof(type))                                                                      \
+         {                                                                                         \
+            case 1:  ret = _rotl8(w, rot);                           break;                        \
+            case 2:  ret = _rotl16(w, rot);                          break;                        \
+            case 4:  ret = _rotl(w, rot);                            break;                        \
+            case 8:  HUZLIB_BIT_IMPL_ROTL_64_SPLIT(&ret, w, rot);    break;                        \
+            default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);     break;                        \
+         }                                                                                         \
+         return ret;                                                                               \
       }
 
-      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)         \
-      HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot)      \
-      {                                                                          \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                    \
-         type ret;                                                               \
-         switch(sizeof(type))                                                    \
-         {                                                                       \
-            case 1:  ret = _rotr8(w, rot);                           break;      \
-            case 2:  ret = _rotr16(w, rot);                          break;      \
-            case 4:  ret = _rotr(w, rot);                            break;      \
-            case 8:  HUZLIB_BIT_IMPL_ROTR_64_SPLIT(&ret, w, rot);    break;      \
-            default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);     break;      \
-         }                                                                       \
-         return ret;                                                             \
+      #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                           \
+      HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__ \
+      {                                                                                            \
+         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         type ret;                                                                                 \
+         switch(sizeof(type))                                                                      \
+         {                                                                                         \
+            case 1:  ret = _rotr8(w, rot);                           break;                        \
+            case 2:  ret = _rotr16(w, rot);                          break;                        \
+            case 4:  ret = _rotr(w, rot);                            break;                        \
+            case 8:  HUZLIB_BIT_IMPL_ROTR_64_SPLIT(&ret, w, rot);    break;                        \
+            default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);     break;                        \
+         }                                                                                         \
+         return ret;                                                                               \
       }
 
    #endif
@@ -1659,50 +1672,50 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       return __rotl64(w, (64 - (rot & 63)) & 63);
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)             \
-   HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot)          \
-   {                                                                             \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
-      type ret;                                                                  \
-      switch(sizeof(type))                                                       \
-      {                                                                          \
-         case 4:  ret = __rotatel4(w, rot);                          break;      \
-         case 8:  ret = __rotatel8(w, rot);                          break;      \
-         case 16: HUZLIB_BIT_IMPL_ROTL_128_SPLIT(&ret, w, rot);      break;      \
-         default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);        break;      \
-      }                                                                          \
-      return ret;                                                                \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                               \
+   HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__     \
+   {                                                                                               \
+      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      type ret;                                                                                    \
+      switch(sizeof(type))                                                                         \
+      {                                                                                            \
+         case 4:  ret = __rotatel4(w, rot);                          break;                        \
+         case 8:  ret = __rotatel8(w, rot);                          break;                        \
+         case 16: HUZLIB_BIT_IMPL_ROTL_128_SPLIT(&ret, w, rot);      break;                        \
+         default: ret = HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);        break;                        \
+      }                                                                                            \
+      return ret;                                                                                  \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)            \
-   HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot)         \
-   {                                                                             \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
-      type ret;                                                                  \
-      switch(sizeof(type))                                                       \
-      {                                                                          \
-         case 4:  ret = __rotater4(w, rot);                          break;      \
-         case 8:  ret = __rotater8(w, rot);                          break;      \
-         case 16: HUZLIB_BIT_IMPL_ROTR_128_SPLIT(&ret, w, rot);      break;      \
-         default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);        break;      \
-      }                                                                          \
-      return ret;                                                                \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                              \
+   HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__    \
+   {                                                                                               \
+      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      type ret;                                                                                    \
+      switch(sizeof(type))                                                                         \
+      {                                                                                            \
+         case 4:  ret = __rotater4(w, rot);                          break;                        \
+         case 8:  ret = __rotater8(w, rot);                          break;                        \
+         case 16: HUZLIB_BIT_IMPL_ROTR_128_SPLIT(&ret, w, rot);      break;                        \
+         default: ret = HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);        break;                        \
+      }                                                                                            \
+      return ret;                                                                                  \
    }
 
 #else
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)             \
-   HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot)          \
-   {                                                                             \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
-      return HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);                               \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                               \
+   HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__     \
+   {                                                                                               \
+      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      return HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);                                                 \
    }
 
-   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)            \
-   HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot)         \
-   {                                                                             \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                       \
-      return HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);                               \
+   #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                              \
+   HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__    \
+   {                                                                                               \
+      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      return HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);                                                 \
    }
 
 #endif
@@ -1717,34 +1730,34 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT, _)
 
 
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART(type, ...)                       \
-HUZLIB_BIT_API type bit_rotate_left_part_##type(type w, unsigned int rot, unsigned int cnt)  \
-{                                                                                            \
-   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                          \
-   if (rot == 0 || cnt == 0)                                                                 \
-      return w;                                                                              \
-                                                                                             \
-   type mask = ((type)1 << cnt) - 1;                                                         \
-   type part = w & mask;                                                                     \
-   type high = w & ~mask;                                                                    \
-                                                                                             \
-   type rotated = (type)((part << rot) | (part >> (cnt - rot))) & mask;                      \
-   return high | rotated;                                                                    \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART(type, ...)                                               \
+HUZLIB_BIT_API type bit_rotate_left_part_##type(type w, unsigned int rot, unsigned int cnt) __huzlib_unsequenced__   \
+{                                                                                                                    \
+   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                                  \
+   if (rot == 0 || cnt == 0)                                                                                         \
+      return w;                                                                                                      \
+                                                                                                                     \
+   type mask = ((type)1 << cnt) - 1;                                                                                 \
+   type part = w & mask;                                                                                             \
+   type high = w & ~mask;                                                                                            \
+                                                                                                                     \
+   type rotated = (type)((part << rot) | (part >> (cnt - rot))) & mask;                                              \
+   return high | rotated;                                                                                            \
 }
 
-#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART(type, ...)                      \
-HUZLIB_BIT_API type bit_rotate_right_part_##type(type w, unsigned int rot, unsigned int cnt) \
-{                                                                                            \
-   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                          \
-   if (rot == 0 || cnt == 0)                                                                 \
-      return w;                                                                              \
-                                                                                             \
-   type mask = ((type)1 << cnt) - 1;                                                         \
-   type part = w & mask;                                                                     \
-   type high = w & ~mask;                                                                    \
-                                                                                             \
-   type rotated = (type)((part >> rot) | (part << (cnt - rot))) & mask;                      \
-   return high | rotated;                                                                    \
+#define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART(type, ...)                                              \
+HUZLIB_BIT_API type bit_rotate_right_part_##type(type w, unsigned int rot, unsigned int cnt) __huzlib_unsequenced__  \
+{                                                                                                                    \
+   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                                  \
+   if (rot == 0 || cnt == 0)                                                                                         \
+      return w;                                                                                                      \
+                                                                                                                     \
+   type mask = ((type)1 << cnt) - 1;                                                                                 \
+   type part = w & mask;                                                                                             \
+   type high = w & ~mask;                                                                                            \
+                                                                                                                     \
+   type rotated = (type)((part >> rot) | (part << (cnt - rot))) & mask;                                              \
+   return high | rotated;                                                                                            \
 }
 
 HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART, _)

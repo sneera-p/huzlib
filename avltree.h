@@ -164,7 +164,7 @@
  *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
  */
 #ifndef typecheck_expr
-#define typecheck_expr(type, var, expr) (typecheck(type, var), (expr))
+#define typecheck_expr(type, var, expr) ((void)typecheck(type, var), (expr))
 #endif /* typecheck_expr */
 
 
@@ -294,9 +294,14 @@
  * HUZLIB_PURE_HINTS
  * --------------------------------------
  * Function attribute hints for optimization based on side-effect analysis.
- * 
- * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
- * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append before return type:
+ *    __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append after parameter list:
+ *    __huzlib_unsequenced__  - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_reproducible__ - no side effects, may read global memory (e.g., strlen)
  *
  * Falls back to empty for unsupported compilers.
  */
@@ -305,11 +310,17 @@
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
-   #define __huzlib_const__   [[unsequenced]]
-   #define __huzlib_pure__    [[reproducible]]
+   #define __huzlib_unsequenced__  [[unsequenced]]
+   #define __huzlib_reproducible__ [[reproducible]]
 
+#else
 
-#elif defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
+   #define __huzlib_unsequenced__
+   #define __huzlib_reproducible__
+
+#endif
+
+#if defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
 
    #define __huzlib_const__   __attribute__((const))
    #define __huzlib_pure__    __attribute__((pure))
@@ -545,14 +556,14 @@ struct avl_root_linked
 #define AVL_ROOT_LINKED_INIT  ((struct avl_root_linked) { .root = AVL_ROOT_INIT, .first = NULL, .last = NULL })
 
 
-#define avl_entry(ptr, type, avl_member)  (        \
-   typecheck(struct avl_node, *(ptr)),             \
-   container_of(ptr, type, avl_member)             \
+#define avl_entry(ptr, type, avl_member)  (           \
+   (void)typecheck(struct avl_node, *(ptr)),          \
+   container_of(ptr, type, avl_member)                \
 )
 
-#define avl_linked_entry(ptr, type, avl_member) (  \
-   typecheck(struct avl_node_linked, *(ptr)),      \
-   container_of(ptr, type, avl_member)             \
+#define avl_linked_entry(ptr, type, avl_member) (     \
+   (void)typecheck(struct avl_node_linked, *(ptr)),   \
+   container_of(ptr, type, avl_member)                \
 )
 
 /* --- sanity checks --- */
@@ -660,21 +671,21 @@ extern HUZLIB_AVL_TREE_API_INLINE void avl_root_linked_init(struct avl_root_link
 
 
 /* --- getters --- */
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *node);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *node) __huzlib_reproducible__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *node) __huzlib_reproducible__;
 
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *root);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *root);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *root) __huzlib_unsequenced__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *root) __huzlib_unsequenced__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *node) __huzlib_unsequenced__;
 
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *root);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *root);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *root) __huzlib_unsequenced__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *root) __huzlib_unsequenced__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *node) __huzlib_unsequenced__;
 
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *node);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *node);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *node);
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *node);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *node) __huzlib_reproducible__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *node) __huzlib_reproducible__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *node) __huzlib_reproducible__;
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *node) __huzlib_reproducible__;
 
 
 /* --- mutate operations --- */
@@ -716,7 +727,7 @@ extern bool avl_verify(const struct avl_node *node);
 
 
 // /* --- query operations --- */
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_root *root);
+extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_root *root) __huzlib_reproducible__;
 extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_first(const struct avl_root *root);
 extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_last(const struct avl_root *root);
 extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_first(const struct avl_root *root);
@@ -755,7 +766,7 @@ extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const str
  * -----------------------------
  * Returns the parent pointer stored in the packed field.
  */
-static HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *__avl_parent(const uintptr_t parent_vbalance)
+static HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *__avl_parent(const uintptr_t parent_vbalance) __huzlib_unsequenced__
 {
    return (struct avl_node *)(parent_vbalance & ~AVL_BALANCE_MASK);
 }
@@ -765,7 +776,7 @@ static HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *__avl_parent
  * ------------------------------
  * Returns the balance factor of the node.
  */
-static HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ int __avl_balance(const uintptr_t parent_vbalance)
+static HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ int __avl_balance(const uintptr_t parent_vbalance) __huzlib_unsequenced__
 {
    return (int)(parent_vbalance & AVL_BALANCE_MASK) - 1;
 }
@@ -1882,53 +1893,53 @@ HUZLIB_AVL_TREE_API_INLINE void avl_root_linked_init(struct avl_root_linked *res
 /* --------------- getter functions  --------------- */
 /* ------------------------------------------------- */
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *restrict node) __huzlib_reproducible__
 {
    assert(node);
    return __avl_parent(node->__parent_vbalance);
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *restrict node) __huzlib_reproducible__
 {
    assert(node);
    return __avl_balance(node->__parent_vbalance);
 }
 
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *restrict root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *restrict root) __huzlib_unsequenced__
 {
    return (struct avl_root *)&root->root;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *restrict root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *restrict root) __huzlib_unsequenced__
 {
    return (struct avl_root *)&root->root;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *restrict node) __huzlib_unsequenced__
 {
    return (struct avl_node *)&node->node;
 }
 
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *restrict root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *restrict root) __huzlib_unsequenced__
 {
    return (struct avl_root_cached *)container_of(root, struct avl_root_cached, root);
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *restrict root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *restrict root) __huzlib_unsequenced__
 {
    return (struct avl_root_linked *)container_of(root, struct avl_root_linked, root);
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *restrict node) __huzlib_unsequenced__
 {
    return (struct avl_node_linked *)container_of(node, struct avl_node_linked, node);
 }
 
 
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *restrict node) __huzlib_reproducible__
 {
    struct avl_node *tmp = avl_linked_node(node)->left;
    /*
@@ -1942,7 +1953,7 @@ HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_le
       return NULL;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *restrict node) __huzlib_reproducible__
 {
    struct avl_node *tmp = avl_linked_node(node)->right;
    /*
@@ -1956,7 +1967,7 @@ HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_ri
       return NULL;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *restrict node) __huzlib_reproducible__
 {
    struct avl_node *tmp = avl_parent(avl_linked_node(node));
    /*
@@ -1970,7 +1981,7 @@ HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_pa
       return NULL;
 }
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *restrict node)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *restrict node) __huzlib_reproducible__
 {
    return avl_balance(avl_linked_node(node));
 }
@@ -2367,7 +2378,6 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_first_linked_augmen
       return NULL;
 
    struct avl_node_linked *restrict node = root->first;
-   struct avl_node_linked *restrict parent;
    struct avl_node *base_node = avl_linked_node(node);
    struct avl_node *base_parent;
 
@@ -2495,7 +2505,6 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_last_linked_augment
       return NULL;
 
    struct avl_node_linked *restrict node = root->last;
-   struct avl_node_linked *restrict parent;
    struct avl_node *base_node = avl_linked_node(node);
    struct avl_node *base_parent;
 
@@ -2753,7 +2762,7 @@ bool avl_verify(const struct avl_node *node)
 /* --------------- query operations  --------------- */
 /* ------------------------------------------------- */
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_root *restrict root)
+HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_root *restrict root) __huzlib_reproducible__
 {
    assert(root);
    return root->node == NULL;
@@ -4050,6 +4059,7 @@ static void test_avl_subtree_height(void)
 #else
    struct avl_root root = AVL_ROOT_INIT;
    struct avl_node n, c, g, w, x, y, z, u;
+   (void)root;
 
    /*
     * create structure
@@ -4092,6 +4102,7 @@ static void test_avl_subtree_size(void)
 #else
    struct avl_root root = AVL_ROOT_INIT;
    struct avl_node n, c, g, w, x, y, z, u;
+   (void)root;
 
    /*
     * create structure
@@ -4134,6 +4145,7 @@ static void test_avl_verify(void)
 #else
    struct avl_root root = AVL_ROOT_INIT;
    struct avl_node n, c, g, w, x, y, z, u;
+   (void)root;
 
    /*
     * create structure

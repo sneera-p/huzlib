@@ -165,7 +165,7 @@
  *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
  */
 #ifndef typecheck_expr
-#define typecheck_expr(type, var, expr) (typecheck(type, var), (expr))
+#define typecheck_expr(type, var, expr) ((void)typecheck(type, var), (expr))
 #endif /* typecheck_expr */
 
 
@@ -320,9 +320,14 @@
  * HUZLIB_PURE_HINTS
  * --------------------------------------
  * Function attribute hints for optimization based on side-effect analysis.
- * 
- * __huzlib_const__ - output depends ONLY on input (e.g., math functions)
- * __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append before return type:
+ *    __huzlib_const__ - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
+ *
+ * Append after parameter list:
+ *    __huzlib_unsequenced__  - output depends ONLY on input (e.g., math functions)
+ *    __huzlib_reproducible__ - no side effects, may read global memory (e.g., strlen)
  *
  * Falls back to empty for unsupported compilers.
  */
@@ -331,11 +336,17 @@
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
 
-   #define __huzlib_const__   [[unsequenced]]
-   #define __huzlib_pure__    [[reproducible]]
+   #define __huzlib_unsequenced__  [[unsequenced]]
+   #define __huzlib_reproducible__ [[reproducible]]
 
+#else
 
-#elif defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
+   #define __huzlib_unsequenced__
+   #define __huzlib_reproducible__
+
+#endif
+
+#if defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
 
    #define __huzlib_const__   __attribute__((const))
    #define __huzlib_pure__    __attribute__((pure))
