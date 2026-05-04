@@ -134,10 +134,10 @@
  * 'type' parameter entered must an unqualified type
  */
 #ifndef typecheck
-#define typecheck(type, expr) _Generic(   \
-   (expr),                                \
-   type: 1                                \
-)
+#define typecheck(type, expr) ((void)_Generic(  \
+   (expr),                                      \
+   type: 1                                      \
+))
 #endif /* typecheck */
 
 

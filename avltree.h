@@ -133,10 +133,10 @@
  * 'type' parameter entered must an unqualified type
  */
 #ifndef typecheck
-#define typecheck(type, expr) _Generic(   \
-   (expr),                                \
-   type: 1                                \
-)
+#define typecheck(type, expr) ((void)_Generic(  \
+   (expr),                                      \
+   type: 1                                      \
+))
 #endif /* typecheck */
 
 
@@ -557,12 +557,12 @@ struct avl_root_linked
 
 
 #define avl_entry(ptr, type, avl_member)  (           \
-   (void)typecheck(struct avl_node, *(ptr)),          \
+   typecheck(struct avl_node, *(ptr)),          \
    container_of(ptr, type, avl_member)                \
 )
 
 #define avl_linked_entry(ptr, type, avl_member) (     \
-   (void)typecheck(struct avl_node_linked, *(ptr)),   \
+   typecheck(struct avl_node_linked, *(ptr)),   \
    container_of(ptr, type, avl_member)                \
 )
 
@@ -1684,10 +1684,10 @@ static HUZLIB_AVL_TREE_API_INLINE struct avl_node *__avl_eject(struct avl_root *
  * Placeholder functions for when avl_node is NOT augmented.
  * These functions do nothing and are optimized away by the compiler.
  */
-static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_update(struct avl_node *)                        { (void)0; }
-static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_copy(struct avl_node *, struct avl_node *)       { (void)0; }
-static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_rotate(struct avl_node *, struct avl_node *)     { (void)0; }
-static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_propagate(struct avl_node *, struct avl_node *)  { (void)0; }
+static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_update(struct avl_node *node)                             { (void)0; }
+static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_copy(struct avl_node *old, struct avl_node *new)          { (void)0; }
+static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_rotate(struct avl_node *old, struct avl_node *new)        { (void)0; }
+static HUZLIB_AVL_TREE_API_INLINE void __avl_dummy_augment_propagate(struct avl_node *node, struct avl_node *stop)   { (void)0; }
 
 const struct avl_augment_callbacks __avl_dummy_augment = {
    .update    = __avl_dummy_augment_update,
@@ -2038,9 +2038,9 @@ HUZLIB_AVL_TREE_API_INLINE void avl_link_node(struct avl_node *restrict node, st
  */
 HUZLIB_AVL_TREE_API_INLINE void avl_link_node_linked(struct avl_node_linked *restrict node, struct avl_node_linked *restrict parent, struct avl_node **restrict link, bool isleft)
 {
-   assert(node && ((isleft) ? (!parent || &avl_linked_node(parent)->left == link) : (!parent || &avl_linked_node(parent)->right == link)));
-   avl_link_node(&node->node, (parent) ? avl_linked_node(parent) : NULL, link);
+   assert(node && ((!parent) || ((isleft) ? (avl_linked_node(parent)->left == *link) : (avl_linked_node(parent)->right == *link))));
 
+   avl_link_node(avl_linked_node(node), avl_linked_node(parent), link);
    if (isleft)
       __avl_add_linked(node, parent->prev, parent);
    else if (parent) /* right-child insertion */
@@ -2053,8 +2053,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_link_node_linked(struct avl_node_linked *res
  * walk-up AVL-tree restoring AVL balance after a node insertion
  * from parent of newly inserted node 
  *
- * @root:   the tree root, not NULL
- * @node:   parent of the inserted node, may be NULL if tree was empty
+ * @root:   the tree root, not NULL @node:   parent of the inserted node, may be NULL if tree was empty
  * @isleft: true if the insertion was in node's left subtree
  * @augment: augment callback functions
  */
@@ -2135,10 +2134,11 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
    assert(root && node && augment);
 
    bool isleft;
-   struct avl_node *restrict n = avl_linked_node(node), *restrict parent = avl_parent(n);
-   struct avl_node **restrict link = __avl_parent_ptr(avl_linked_root(root), n, parent, &isleft);
+   struct avl_node *restrict base_node = avl_linked_node(node);
+   struct avl_node *restrict base_parent = avl_parent(base_node);
+   struct avl_node **restrict link = __avl_parent_ptr(avl_linked_root(root), base_node, base_parent, &isleft);
 
-   if (n->left && n->right)
+   if (base_node->left && base_node->right)
    {
       /*
        * case: 'node' has 2 children
@@ -2152,7 +2152,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
        */
 
       struct avl_node *restrict succ = avl_linked_node(node->next);
-      if (succ == n->right)
+      if (succ == base_node->right)
       {
          /*
           * case: succ's parent is node
@@ -2160,12 +2160,12 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
           *         |                             |
           *         n                             s
           *       /   \                         /   \
-          *     w       s         ==>         w     (x)
+          *     w       s         ==>         w      (x)
           *    / \       \                   / \
           *  (a) (b)     (x)               (a) (b)
           */
 
-         parent = succ;
+         base_parent = succ;
          isleft = false;
       }
       else
@@ -2185,20 +2185,20 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
           *          (z)
           */
 
-         parent = avl_parent(succ);
+         base_parent = avl_parent(succ);
          isleft = true;
 
-         __avl_delink_node(succ->right, parent, &parent->left);
+         __avl_delink_node(succ->right, base_parent, &base_parent->left);
 
-         __avl_set_parent(n->right, succ);
-         succ->right = n->right;
+         __avl_set_parent(base_node->right, succ);
+         succ->right = base_node->right;
       }
-      __avl_set_parent(n->left, succ);
-      succ->left = n->left;
+      __avl_set_parent(base_node->left, succ);
+      succ->left = base_node->left;
 
-      __avl_replace_node(n, succ, link, augment->copy);
+      __avl_replace_node(base_node, succ, link, augment->copy);
    }
-   else if (n->left)
+   else if (base_node->left)
    {
       /*
        * case: 'node' has only left child
@@ -2211,12 +2211,12 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
        * NOTE: due to AVL properties, 's' must be a leaf node
        */
 
-      __avl_delink_node(n->left, parent, link);
+      __avl_delink_node(base_node->left, base_parent, link);
 
       if (node == root->last)
          root->last = node->prev;
    }
-   else if (n->right)
+   else if (base_node->right)
    {
       /*
        * case: 'node' has only right child
@@ -2229,7 +2229,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
        * NOTE: due to AVL properties, 's' must be a leaf node
        */
 
-      __avl_delink_node(n->right, parent, link);
+      __avl_delink_node(base_node->right, base_parent, link);
 
       if (node == root->first)
          root->first = node->next;
@@ -2253,7 +2253,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
    }
 
    __avl_rm_linked(node->prev, node->next);
-   __avl_eject_rebalance(avl_linked_root(root), parent, isleft, augment);
+   __avl_eject_rebalance(avl_linked_root(root), base_parent, isleft, augment);
 }
 
 
@@ -2372,14 +2372,14 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_first_linked_augmen
 {
    assert(root && augment);
 
-   struct avl_root *base_root = avl_linked_root(root);
+   struct avl_root *restrict base_root = avl_linked_root(root);
 
    if (__huzlib_unlikely__(avl_is_empty(base_root)))
       return NULL;
 
    struct avl_node_linked *restrict node = root->first;
-   struct avl_node *base_node = avl_linked_node(node);
-   struct avl_node *base_parent;
+   struct avl_node *restrict base_node = avl_linked_node(node);
+   struct avl_node *restrict base_parent;
 
    if (base_node == base_root->node)
    {
@@ -2472,7 +2472,7 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_eject_last_cached_augmented(stru
 {
    struct avl_node *restrict node = avl_eject_last_augmented(avl_cached_root(root), augment);
    if (node == root->first)
-      root->first = avl_first(avl_cached_root(root));
+      root->first = NULL;
    return node;
 }
 
@@ -2499,14 +2499,14 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_last_linked_augment
 {
    assert(root && augment);
 
-   struct avl_root *base_root = avl_linked_root(root);
+   struct avl_root *restrict base_root = avl_linked_root(root);
 
    if (__huzlib_unlikely__(avl_is_empty(base_root)))
       return NULL;
 
    struct avl_node_linked *restrict node = root->last;
-   struct avl_node *base_node = avl_linked_node(node);
-   struct avl_node *base_parent;
+   struct avl_node *restrict base_node = avl_linked_node(node);
+   struct avl_node *restrict base_parent;
 
    if (base_node == base_root->node)
    {
@@ -2984,7 +2984,7 @@ static long long avl_verify_recursive(struct avl_node *node, bool (*augment_veri
 
 void setUp(void) {}
 void tearDown(void) {}
-bool dummy_augment_verify(struct avl_node *) { return true; }
+bool dummy_augment_verify(struct avl_node *node) { return true; }
 
 static void test_avl_eject_rebalance_LL(void)
 {
