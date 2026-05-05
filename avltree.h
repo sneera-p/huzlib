@@ -480,8 +480,8 @@
  */
 struct avl_node
 {
-   struct avl_node *left, *right;
    uintptr_t __parent_vbalance;
+   struct avl_node *left, *right;
 };
 
 /*
@@ -547,24 +547,25 @@ struct avl_root_cached
 struct avl_root_linked
 {
    struct avl_root root; // WARN: Do not fucking change this (keep offset 0)
-   struct avl_node_linked *first, *last;
+   struct avl_node_linked *first;
 };
 
 
 #define AVL_ROOT_INIT         ((struct avl_root)        { .node = NULL })
 #define AVL_ROOT_CACHED_INIT  ((struct avl_root_cached) { .root = AVL_ROOT_INIT, .first = NULL })
-#define AVL_ROOT_LINKED_INIT  ((struct avl_root_linked) { .root = AVL_ROOT_INIT, .first = NULL, .last = NULL })
+#define AVL_ROOT_LINKED_INIT  ((struct avl_root_linked) { .root = AVL_ROOT_INIT, .first = NULL })
 
 
-#define avl_entry(ptr, type, avl_member)  (           \
-   typecheck(struct avl_node, *(ptr)),          \
-   container_of(ptr, type, avl_member)                \
+#define avl_entry(ptr, type, avl_member)  (        \
+   typecheck(struct avl_node, *(ptr)),             \
+   container_of(ptr, type, avl_member)             \
 )
 
-#define avl_linked_entry(ptr, type, avl_member) (     \
-   typecheck(struct avl_node_linked, *(ptr)),   \
-   container_of(ptr, type, avl_member)                \
+#define avl_linked_entry(ptr, type, avl_member) (  \
+   typecheck(struct avl_node_linked, *(ptr)),      \
+   container_of(ptr, type, avl_member)             \
 )
+
 
 /* --- sanity checks --- */
 _Static_assert(offsetof(struct avl_root_cached, root) == 0, "Do not fuck with the avl_root_cached type");
@@ -1561,7 +1562,41 @@ static HUZLIB_AVL_TREE_API_INLINE struct avl_node *__avl_eject(struct avl_root *
    struct avl_node *restrict parent = avl_parent(node);
    struct avl_node **restrict link = __avl_parent_ptr(root, node, parent, &isleft);
 
-   if (node->left && node->right)
+   if (!node->left)
+   {
+      /*
+       * case: 'node' has only right child or is leaf
+       *
+       *   |                       |
+       *   n           ==>        (s)
+       *    \
+       *    (s)
+       *
+       * NOTE: due to AVL properties, 's' must be a leaf node
+       */
+
+      __avl_delink_node(node->right, parent, link);
+      node = (node->right) ? node->right : parent;
+      // return node->right if exists or parent in case node is first-node
+   }
+   else if (!node->right /* && node->left */)
+   {
+      /*
+       * case: 'node' has only left child
+       *
+       *       |                   |
+       *       n       ==>         s
+       *      /
+       *     s
+       *
+       * NOTE: due to AVL properties, 's' must be a leaf node
+       */
+
+      __avl_delink_node(node->left, parent, link);
+      // no need to update node to return in-order successor since
+      // 'node' cannot be 'first' node in tree (due to node->left existing)
+   }
+   else /* (node->right && node->left) */
    {
       /*
        * case: 'node' has 2 children
@@ -1624,53 +1659,7 @@ static HUZLIB_AVL_TREE_API_INLINE struct avl_node *__avl_eject(struct avl_root *
 
       __avl_replace_node(node, succ, link, augment->copy);
       // no need to update node to return in-order successor since
-      // 'node' cannot be 'first' node in tree (due to node->left != NULL)
-   }
-   else if (node->left)
-   {
-      /*
-       * case: 'node' has only left child
-       *
-       *       |                   |
-       *       n       ==>         s
-       *      /
-       *     s
-       *
-       * NOTE: due to AVL properties, 's' must be a leaf node
-       */
-
-      __avl_delink_node(node->left, parent, link);
-      // no need to update node to return in-order successor since
-      // 'node' cannot be 'first' node in tree (due to node->left != NULL)
-   }
-   else if (node->right)
-   {
-      /*
-       * case: 'node' has only right child
-       *
-       *   |                       |
-       *   n           ==>         s
-       *    \
-       *     s
-       *
-       * NOTE: due to AVL properties, 's' must be a leaf node
-       */
-
-      __avl_delink_node(node->right, parent, link);
-      node = node->right; // return node->right in case node is first-node
-   }
-   else
-   {
-
-      /*
-       * case: 'node' is leaf node
-       *
-       *   |                       |
-       *   n           ==>        ☠️
-       */
-
-      *link = NULL;
-      node = parent;
+      // 'node' cannot be 'first' node in tree (due to node->left existing)
    }
 
    __avl_eject_rebalance(root, parent, isleft, augment);
@@ -2212,9 +2201,6 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
        */
 
       __avl_delink_node(base_node->left, base_parent, link);
-
-      if (node == root->last)
-         root->last = node->prev;
    }
    else if (base_node->right)
    {
@@ -2247,9 +2233,6 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
 
       if (node == root->first)
          root->first = node->next;
-
-      if (node == root->last)
-         root->last = node->prev;
    }
 
    __avl_rm_linked(node->prev, node->next);
@@ -2397,8 +2380,6 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_first_linked_augmen
 
    if (node == root->first)
       root->first = node->next;
-   if (node == root->last)
-      root->last = node->prev;
 
    return node;
 }
@@ -2497,36 +2478,10 @@ HUZLIB_AVL_TREE_API struct avl_node_linked *avl_eject_last_linked(struct avl_roo
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_last_linked_augmented(struct avl_root_linked *restrict root, const struct avl_augment_callbacks *restrict augment)
 {
-   assert(root && augment);
-
-   struct avl_root *restrict base_root = avl_linked_root(root);
-
-   if (__huzlib_unlikely__(avl_is_empty(base_root)))
-      return NULL;
-
-   struct avl_node_linked *restrict node = root->last;
-   struct avl_node *restrict base_node = avl_linked_node(node);
-   struct avl_node *restrict base_parent;
-
-   if (base_node == base_root->node)
-   {
-      base_parent = NULL;
-      __avl_delink_node(base_node->left, base_parent, &base_root->node);
-   }
-   else
-   {
-      base_parent = avl_parent(base_node);
-      __avl_delink_node(base_node->left, base_parent, &base_parent->right);
-   }
-
-   __avl_rm_linked(node->prev, node->next);
-   __avl_eject_rebalance(base_root, base_parent, false, augment);
-
+   struct avl_node *restrict base_node = avl_eject_last_augmented(avl_linked_root(root), augment);
+   struct avl_node_linked *restrict node = avl_linked_wrap_node(base_node);
    if (node == root->first)
-      root->first = node->next;
-   if (node == root->last)
-      root->last = node->prev;
-
+      root->first = NULL;
    return node;
 }
 
@@ -3782,7 +3737,6 @@ static void test_avl_eject_linked_2child_shallow_successor(void)
          .node = avl_linked_node(&n),
       },
       .first = &x,
-      .last = &u,
    };
 
    avl_setup_test_node_linked(&n, &c, &w, NULL, 1, &z, &w);
@@ -3845,7 +3799,6 @@ static void test_avl_eject_linked_2child_deep_successor(void)
          .node = avl_linked_node(&n),
       },
       .first = &x,
-      .last = &u,
    };
 
    avl_setup_test_node_linked(&n, &c, &w, NULL, 1, &z, &w);
@@ -3903,7 +3856,6 @@ static void test_avl_eject_linked_left_child_leaf(void)
          .node = avl_linked_node(&n),
       },
       .first = &c,
-      .last = &w,
    };
 
    avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &x, &u);
@@ -3915,9 +3867,8 @@ static void test_avl_eject_linked_left_child_leaf(void)
 
    avl_eject_linked(&root, &w);
 
-   // Root unchanged, but 'last' changed
+   // Root unchanged
    TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
-   TEST_ASSERT_EQUAL_PTR(&u, avl_linked_node(root.last));
 
    // u now replaces w
    TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&u)->left);
@@ -3954,7 +3905,6 @@ static void test_avl_eject_linked_right_child_leaf(void)
          .node = avl_linked_node(&n),
       },
       .first = &c,
-      .last = &w,
    };
 
    avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &x, &u);
@@ -4005,7 +3955,6 @@ static void test_avl_eject_linked_leaf(void)
          .node = avl_linked_node(&n),
       },
       .first = &x,
-      .last = &u,
    };
 
    avl_setup_test_node_linked(&n, &c, &w, NULL, 0, &c, &w);
@@ -4036,9 +3985,8 @@ static void test_avl_eject_linked_leaf(void)
    // --- TEST 2: eject (u) ---
    avl_eject_linked(&root, &u);
 
-   // Root unchanged, but 'last' changed
+   // Root unchanged
    TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
-   TEST_ASSERT_EQUAL_PTR(&w, avl_linked_node(root.last));
 
    // w now leaf node
    TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&w)->left);
@@ -4437,7 +4385,7 @@ static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *roo
 
    struct avl_node **link = &avl_linked_root(root)->node;
    struct avl_node_linked *parent = NULL;
-   bool isleft = false, isfirst = true, islast = true;
+   bool isleft = false, isfirst = true;
 
    while (*link)
    {
@@ -4448,7 +4396,6 @@ static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *roo
       {
          link = &avl_linked_node(parent)->left;
          isleft = true;
-         islast = false;
       }
       else
       {
@@ -4460,9 +4407,6 @@ static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *roo
 
    if (isfirst)
       root->first = &osn->avl;
-
-   if (islast)
-      root->last = &osn->avl;
 
    osn->size = 1;
    avl_link_node_linked(&osn->avl, parent, link, isleft);
