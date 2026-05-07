@@ -161,6 +161,29 @@
 
 
 /*
+ * sizeof_member(type, member)
+ * ---------------------------
+ * Retrieves exact size of type->member
+ */
+#ifndef sizeof_member
+#define sizeof_member(type, member) sizeof(typeof_member(type, member))
+#endif /* sizeof_member */
+
+
+
+/*
+ * alignof_member(type, member)
+ * ---------------------------
+ * Retrieves exact align of type->member
+ */
+#ifndef alignof_member
+#include <stdalign.h>
+#define alignof_member(type, member) alignof(typeof_member(type, member))
+#endif /* alignof_member */
+
+
+
+/*
  * types_equal(typea, typeb)
  * -------------------------
  * Validates types 'typea' and 'typeb' are the same
