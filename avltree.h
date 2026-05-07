@@ -2327,7 +2327,7 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_eject_first_cached_augmented(str
    }
 
    __avl_eject_rebalance(avl_cached_root(root), parent, true, augment);
-   root->first = avl_first(avl_cached_root(root));
+   root->first = (node->right) ? node->right : parent;
 
    return node;
 }
@@ -4536,6 +4536,14 @@ int main(void)
 
    RUN_TEST(test_avl_augmented_insert_eject);
    RUN_TEST(test_avl_linked_augmented_insert_eject);
+
+   // TODO: test avl_eject_first*_augmented varitants (x3)
+
+   // TODO: test avl_eject_last_augmented (no need to test varitants)
+
+   // TODO: test avl_subtree_first, avl_subtree_last, avl_subtree_postorder_first
+
+   // TODO: test __avl_next, __avl_prev, __avl_preorder_next, __avl_postorder_first
 
    return UnityEnd();
 }
