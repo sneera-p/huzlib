@@ -380,39 +380,59 @@
 
 
 /*
- * unreachable()
- * -------------
- * Compiler hint indicating that a code path must never be reached at runtime.
- * 
- * Behavior:
- * - If reached, the behavior is undefined (optimizers may assume it never happens).
- * - Enables aggressive dead code elimination and optimization.
- * - Use after calls to functions that never return (e.g., exit(), abort()),
- *   in default cases of exhaustive switches, or after impossible conditions.
- * 
- * Example:
- *   switch (value) {
- *       case A: return foo();
- *       case B: return bar();
- *   }
- *   unreachable();  // all enum values handled above
+ * __huzlib_memcpy(dest, src, n)
+ * -----------------------------
+ * Copy n bytes from src to dest with no undefined behavior.
+ *
+ * Why not just use memcpy() from <string.h>?
+ *    This header aims to be standalone. No libc dependencies.
+ *    Some compilers provide __builtin_memcpy. We use that.
+ *    MSVC provides #pragma intrinsic(memcpy). We use that.
+ *    For the rest, we fall back to a portable loop.
+ *
+ * Compiler support:
+ *    GCC/Clang/Intel/ARM/ZIG → __builtin_memcpy (intrinsic, fast)
+ *    MSVC                    → #pragma intrinsic(memcpy) (intrinsic, fast)
+ *    Everything else         → portable byte-by-byte loop (slow but works)
+ *
+ * The portable loop:
+ *    Cast void* to unsigned char* for byte-by-byte copy.
+ *    C standard forbids arithmetic on void*, so we need the casts.
+ *    Compilers optimize this loop to memcpy() or SIMD at -O2 anyway.
+ *
+ * WARNING:
+ *    dest and src must not overlap. This implementation does not handle
+ *    overlapping regions (just like standard memcpy).
  */
-#ifndef unreachable
-#if (__STDC_VERSION__ >= 202311L)
-   #include <stdlib.h>
+#ifndef __huzlib_memcpy
+#if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__)
 
-#elif defined(__GNUC__) || defined(__clang__)
-   #define unreachable() __builtin_unreachable()
+   #define __huzlib_memcpy __builtin_memcpy
 
 #elif defined(_MSC_VER)
-   #define unreachable() __assume(0)
+
+   #pragma intrinsic(memcpy)
+   #define __huzlib_memcpy memcpy
 
 #else
-   #include <assert.h>
-   #define unreachable() assert(0)
+
+   #include <stddef.h>
+
+   static inline void *__huzlib_memcpy_fallback(void *restrict dest, const void *restrict src, size_t n)
+   {
+      unsigned char *d = dest;
+      const unsigned char *s = src;
+
+      while (n--)
+         *d++ = *s++;
+
+      return dest;
+   }
+
+   #define __huzlib_memcpy __huzlib_memcpy_fallback
 
 #endif
-#endif /* unreachable */
+#endif /* __huzlib_memcpy */
 
 
 #endif /* HUZLIB_STACK_INCLUDES */
@@ -465,9 +485,10 @@ struct NAME {                                      \
 })
 
 
-#define __stack_chunk_size(stack)      (sizeof((stack)->tail.chunk->buf))
-#define __stack_chunk_unit_size(stack) (sizeof((stack)->tail.chunk->buf[0]))
-#define __stack_chunk_align(stack)     (alignof(typeof((stack)->tail.chunk->buf[0])))
+#define __stack_type(stack)            typeof((stack)->tail.chunk->buf[0])
+#define __stack_chunk_size(stack)      sizeof((stack)->tail.chunk->buf)
+#define __stack_chunk_unit_size(stack) sizeof(__stack_type(stack))
+#define __stack_chunk_align(stack)     alignof(__stack_type(stack))
 #define __stack_chunk_cap(stack)       (__stack_chunk_size(stack) / __stack_chunk_unit_size(stack))
 
 
@@ -513,7 +534,7 @@ extern HUZLIB_STACK_API void __stack_clear(struct __huzlib_stack *stack);
 )
 
 #define stack_peek(stack) (               \
-   (typeof((stack)->tail.chunk->buf[0]) *)\
+   (__stack_type(stack) *)                \
    __stack_peek(                          \
       __stack_cast(stack),                \
       __stack_chunk_size(stack),          \
@@ -553,7 +574,6 @@ extern HUZLIB_STACK_API void __stack_clear(struct __huzlib_stack *stack);
 
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 
 
 #ifdef NDEBUG
@@ -592,7 +612,7 @@ void __stack_chunk_push(struct __huzlib_stack_chunk *restrict chunk, size_t size
 {
    assert(chunk && new && (lenb < size));
    unsigned char *restrict aligned = __chunk_buf_alignup((uintptr_t)&chunk->buf, align);
-   memcpy(aligned + lenb, new, unit_size);
+   __huzlib_memcpy(aligned + lenb, new, unit_size);
 }
 
 

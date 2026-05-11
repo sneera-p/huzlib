@@ -344,12 +344,70 @@
 #endif /* HUZLIB_PURE_HINTS */
 
 
+
+/*
+ * __huzlib_memcpy(dest, src, n)
+ * -----------------------------
+ * Copy n bytes from src to dest with no undefined behavior.
+ *
+ * Why not just use memcpy() from <string.h>?
+ *    This header aims to be standalone. No libc dependencies.
+ *    Some compilers provide __builtin_memcpy. We use that.
+ *    MSVC provides #pragma intrinsic(memcpy). We use that.
+ *    For the rest, we fall back to a portable loop.
+ *
+ * Compiler support:
+ *    GCC/Clang/Intel/ARM/ZIG → __builtin_memcpy (intrinsic, fast)
+ *    MSVC                    → #pragma intrinsic(memcpy) (intrinsic, fast)
+ *    Everything else         → portable byte-by-byte loop (slow but works)
+ *
+ * The portable loop:
+ *    Cast void* to unsigned char* for byte-by-byte copy.
+ *    C standard forbids arithmetic on void*, so we need the casts.
+ *    Compilers optimize this loop to memcpy() or SIMD at -O2 anyway.
+ *
+ * WARNING:
+ *    dest and src must not overlap. This implementation does not handle
+ *    overlapping regions (just like standard memcpy).
+ */
+#ifndef __huzlib_memcpy
+#if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__)
+
+   #define __huzlib_memcpy __builtin_memcpy
+
+#elif defined(_MSC_VER)
+
+   #pragma intrinsic(memcpy)
+   #define __huzlib_memcpy memcpy
+
+#else
+
+   #include <stddef.h>
+
+   static inline void *__huzlib_memcpy_fallback(void *restrict dest, const void *restrict src, size_t n)
+   {
+      unsigned char *d = dest;
+      const unsigned char *s = src;
+
+      while (n--)
+         *d++ = *s++;
+
+      return dest;
+   }
+
+   #define __huzlib_memcpy __huzlib_memcpy_fallback
+
+#endif
+#endif /* __huzlib_memcpy */
+
+
 #endif /* HUZLIB_STATIC_STACK_INCLUDES */
 
 
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdalign.h>
 
 /*
  * STATIC_STACK(type, capacity, [name])
@@ -361,7 +419,7 @@
  *   STATIC_STACK(int, 4, mystack)  -> named struct "mystack"
  *
  * The problem: C macros cannot count arguments. They cannot tell if you
- * passed 2 args or 3 args. ISO C also complains if you leave ... empty.
+ * passed 2 args or 3 args. ISO C also complains if you leave __VA_ARGS__ empty.
  *
  * The trick: always pass 4 arguments down to the inner macro. The 4th
  * argument does nothing. It just sits there and eats a dummy value.
@@ -383,7 +441,7 @@
  * Why the empty argument? When you give no name, you get an empty spot.
  * The inner macro sees "struct { ... }" which is a valid anonymous struct.
  *
- * Why the dummy _1? ISO C bans a completely empty ... parameter.
+ * Why the dummy _1? ISO C bans a completely empty __VA_ARGS__ parameter.
  * The _1 fills that slot. The inner macro ignores it completely.
  */
 #define __STATIC_STACK(TYPE, CAPACITY, NAME, ...)  \
@@ -395,8 +453,11 @@ struct NAME {                                      \
 #define STATIC_STACK(...) __STATIC_STACK(__VA_ARGS__, /* empty */, _1)
 
 #define STATIC_STACK_INIT(name)           ((typeof(name)) { .lenb = 0 })
-#define __static_stack_size(stack)        (sizeof((stack)->buf))
-#define __static_stack_unit_size(stack)   (sizeof((stack)->buf[0]))
+
+#define __static_stack_type(stack)        typeof((stack)->buf[0])
+#define __static_stack_size(stack)        sizeof((stack)->buf)
+#define __static_stack_unit_size(stack)   sizeof(__static_stack_type(stack))
+#define __static_stack_buf_align(stack)   alignof(__static_stack_type(stack))
 #define __static_stack_cap(stack)         (__static_stack_size(stack) / __static_stack_unit_size(stack))
 
 
@@ -488,14 +549,22 @@ struct NAME {                                      \
 STATIC_STACK(unsigned char, /* empty */, __huzlib_uchar_static_stack);
 #define __static_stack_cast(stack) container_of(&(stack)->lenb, struct __huzlib_uchar_static_stack, lenb)
 
-extern __huzlib_inline__ void __static_stack_init(struct __huzlib_uchar_static_stack *stack);
-extern __huzlib_inline__ __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *stack) __huzlib_reproducible__;
-extern __huzlib_inline__ __huzlib_pure__ bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *stack, size_t size) __huzlib_reproducible__;
-extern __huzlib_inline__ __huzlib_pure__ size_t __static_stack_len(const struct __huzlib_uchar_static_stack *stack, size_t unit_size) __huzlib_reproducible__;
-extern __huzlib_inline__ __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *stack, size_t unit_size) __huzlib_reproducible__;
-extern __huzlib_inline__ void __static_stack_clear(struct __huzlib_uchar_static_stack *stack);
-extern __huzlib_inline__ void __static_stack_push(struct __huzlib_uchar_static_stack *stack, size_t size, size_t unit_size, const void *new);
-extern __huzlib_inline__ void __static_stack_pop(struct __huzlib_uchar_static_stack *stack, size_t unit_size);
+
+#ifdef NDEBUG
+   #define HUZLIB_STATIC_STACK_API __huzlib_inline__
+#else
+   #define HUZLIB_STATIC_STACK_API __huzlib_noinline__
+#endif /* NDEBUG */
+
+
+extern HUZLIB_STATIC_STACK_API void __static_stack_init(struct __huzlib_uchar_static_stack *stack);
+extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *stack) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *stack, size_t size) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API __huzlib_pure__ size_t __static_stack_len(const struct __huzlib_uchar_static_stack *stack, size_t unit_size) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *stack, size_t unit_size, size_t align) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API void __static_stack_clear(struct __huzlib_uchar_static_stack *stack);
+extern HUZLIB_STATIC_STACK_API void __static_stack_push(struct __huzlib_uchar_static_stack *stack, size_t size, size_t unit_size, size_t align, const void *new);
+extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_static_stack *stack, size_t unit_size);
 
 
 #define static_stack_init(stack) (        \
@@ -525,10 +594,11 @@ extern __huzlib_inline__ void __static_stack_pop(struct __huzlib_uchar_static_st
 )
 
 #define static_stack_peek(stack) (        \
-   (typeof((stack)->buf[0]) *)            \
+   (__static_stack_type(stack) *)         \
    __static_stack_peek(                   \
       __static_stack_cast(stack),         \
-      __static_stack_unit_size(stack)     \
+      __static_stack_unit_size(stack),    \
+      __static_stack_buf_align(stack)     \
    )                                      \
 )
 
@@ -543,6 +613,7 @@ extern __huzlib_inline__ void __static_stack_pop(struct __huzlib_uchar_static_st
       __static_stack_cast(stack),         \
       __static_stack_size(stack),         \
       __static_stack_unit_size(stack),    \
+      __static_stack_buf_align(stack),    \
       (void *)(new)                       \
    )                                      \
 )
@@ -559,59 +630,78 @@ extern __huzlib_inline__ void __static_stack_pop(struct __huzlib_uchar_static_st
 #ifdef HUZLIB_STATIC_STACK_IMPL
 
 #include <assert.h>
-#include <string.h>
+#include <stdint.h>
 
-__huzlib_inline__ 
+
+#ifdef NDEBUG
+   #define HUZLIB_STATIC_STACK_INTERNAL static __huzlib_inline__
+#else
+   #define HUZLIB_STATIC_STACK_INTERNAL static inline
+#endif /* NDEBUG */
+
+
+HUZLIB_STATIC_STACK_INTERNAL __huzlib_const__
+unsigned char *__static_stack_buf_alignup(uintptr_t addr, size_t align) __huzlib_unsequenced__
+{
+   assert(align > 0 && (align & (align - 1)) == 0);
+   size_t offset = (align - (addr & (align - 1))) & (align - 1);
+   return (unsigned char *)(addr + offset);
+}
+
+
+HUZLIB_STATIC_STACK_API 
 void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
 {
    assert(stack);
    stack->lenb = 0;
 }
 
-__huzlib_inline__ __huzlib_pure__ 
+HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack) __huzlib_reproducible__
 {
    assert(stack);
    return stack->lenb == 0;
 }
 
-__huzlib_inline__ __huzlib_pure__ 
+HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *restrict stack, size_t size) __huzlib_reproducible__
 {
    assert(stack);
    return stack->lenb == size;
 }
 
-__huzlib_inline__ __huzlib_pure__ 
+HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 size_t __static_stack_len(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size) __huzlib_reproducible__
 {
    assert(stack);
    return stack->lenb / unit_size;
 }
 
-__huzlib_inline__ __huzlib_pure__ 
-void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size) __huzlib_reproducible__
+HUZLIB_STATIC_STACK_API __huzlib_pure__ 
+void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size, size_t align) __huzlib_reproducible__
 {
    assert(!__static_stack_is_empty(stack));
-   return (void *)(stack->buf + stack->lenb - unit_size);
+   unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
+   return (void *)(aligned + stack->lenb - unit_size);
 }
 
-__huzlib_inline__ 
+HUZLIB_STATIC_STACK_API 
 void __static_stack_clear(struct __huzlib_uchar_static_stack *restrict stack)
 {
    assert(stack);
    stack->lenb = 0;
 }
 
-__huzlib_inline__ 
-void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, size_t size, size_t unit_size, const void *restrict new)
+HUZLIB_STATIC_STACK_API 
+void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, size_t size, size_t unit_size, size_t align, const void *restrict new)
 {
    assert(!__static_stack_is_full(stack, size) && new);
-   memcpy(stack->buf + stack->lenb, new, unit_size);
+   unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
+   __huzlib_memcpy(aligned + stack->lenb, new, unit_size);
    stack->lenb += unit_size;
 }
 
-__huzlib_inline__ 
+HUZLIB_STATIC_STACK_API 
 void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size)
 {
    assert(!__static_stack_is_empty(stack));
