@@ -140,17 +140,16 @@
  */
 #ifndef unreachable
 #if (__STDC_VERSION__ >= 202311L)
-   #include <stdlib.h>
+   #include <stddef.h>
 
-#elif defined(__GNUC__) || defined(__clang__)
+#elif defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
    #define unreachable() __builtin_unreachable()
 
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) || defined(__POCC__)
    #define unreachable() __assume(0)
 
 #else
-   #include <assert.h>
-   #define unreachable() assert(0)
+   #define unreachable() do { for(;;); } while(0)
 
 #endif
 #endif /* unreachable */

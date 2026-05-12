@@ -345,6 +345,59 @@
 
 
 
+#ifndef __huzlib_assert
+/*
+ * first, we check for NDEBUG, 
+ * which means we are compiling under Optimized mode
+ */
+#ifdef NDEBUG
+
+   #define __huzlib_assert(cond) ((void)0)
+
+#else
+   /*
+    * now we check for -freestanding, 
+    * which means <assert.h> is not available
+    */
+   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0)
+
+      #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __builtin_trap();             \
+         } while(0)
+
+      #elif defined(_MSC_VER) || defined(__POCC__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __debugbreak();               \
+         } while(0)
+
+      #else
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond)) {                   \
+               volatile int *__huz_fail = 0; \
+               (void)*__huz_fail;            \
+            }                                \
+         } while(0)
+
+      #endif
+
+   #else
+
+      #include <assert.h>
+      #define __huzlib_assert(cond) assert(cond)
+
+   #endif /* __STDC_HOSTED__ */
+
+#endif /* NDEBUG */
+#endif /* __huzlib_assert */
+
+
+
 /*
  * __huzlib_memcpy(dest, src, n)
  * -----------------------------
@@ -629,7 +682,6 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_sta
 
 #ifdef HUZLIB_STATIC_STACK_IMPL
 
-#include <assert.h>
 #include <stdint.h>
 
 
@@ -643,7 +695,7 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_sta
 HUZLIB_STATIC_STACK_INTERNAL __huzlib_const__
 unsigned char *__static_stack_buf_alignup(uintptr_t addr, size_t align) __huzlib_unsequenced__
 {
-   assert(align > 0 && (align & (align - 1)) == 0);
+   __huzlib_assert(align > 0 && (align & (align - 1)) == 0);
    size_t offset = (align - (addr & (align - 1))) & (align - 1);
    return (unsigned char *)(addr + offset);
 }
@@ -652,35 +704,35 @@ unsigned char *__static_stack_buf_alignup(uintptr_t addr, size_t align) __huzlib
 HUZLIB_STATIC_STACK_API 
 void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
 {
-   assert(stack);
+   __huzlib_assert(stack);
    stack->lenb = 0;
 }
 
 HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    return stack->lenb == 0;
 }
 
 HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *restrict stack, size_t size) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    return stack->lenb == size;
 }
 
 HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 size_t __static_stack_len(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    return stack->lenb / unit_size;
 }
 
 HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size, size_t align) __huzlib_reproducible__
 {
-   assert(!__static_stack_is_empty(stack));
+   __huzlib_assert(!__static_stack_is_empty(stack));
    unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
    return (void *)(aligned + stack->lenb - unit_size);
 }
@@ -688,14 +740,14 @@ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict sta
 HUZLIB_STATIC_STACK_API 
 void __static_stack_clear(struct __huzlib_uchar_static_stack *restrict stack)
 {
-   assert(stack);
+   __huzlib_assert(stack);
    stack->lenb = 0;
 }
 
 HUZLIB_STATIC_STACK_API 
 void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, size_t size, size_t unit_size, size_t align, const void *restrict new)
 {
-   assert(!__static_stack_is_full(stack, size) && new);
+   __huzlib_assert(!__static_stack_is_full(stack, size) && new);
    unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
    __huzlib_memcpy(aligned + stack->lenb, new, unit_size);
    stack->lenb += unit_size;
@@ -704,7 +756,7 @@ void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, siz
 HUZLIB_STATIC_STACK_API 
 void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size)
 {
-   assert(!__static_stack_is_empty(stack));
+   __huzlib_assert(!__static_stack_is_empty(stack));
    stack->lenb -= unit_size;
 }
 
@@ -716,33 +768,49 @@ void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size
 #ifdef HUZLIB_STATIC_STACK_TEST
 
 #include <stdio.h>
-#include "pcg_basic.h"
-#include "unity.h"
+// #include "pcg_basic.h"
+// #include "unity.h"
+//
+// void setUp(void) {}
+// void tearDown(void) {}
 
-void setUp(void) {}
-void tearDown(void) {}
-
-int main(void)
+int main(int argc, char *argv[])
 {
-	STATIC_STACK(int, 4) stack = STATIC_STACK_INIT(stack);
+   /* Use a global or static to prevent elimination */
+   static STATIC_STACK(int, 4) stack;
+   static int push_count = 0;
 
-   int values[3] = { 0, 1, 2 };
-   static_stack_push(&stack, values + 0);
-   static_stack_push(&stack, values + 1);
-   static_stack_push(&stack, values + 2);
-   printf("stack full?: %u\n", static_stack_is_full(&stack));
-   static_stack_push(&stack, values + 1);
+   /* Runtime values from command line - compiler can't predict */
+   int a = argc;
+   int b = argc * 2;
+   int c = argc * 3;
 
-	printf("stack size: %zu\n", sizeof(stack));
-	printf("stack cap:  %zu\n", __static_stack_cap(&stack));
-   printf("stack full?: %u\n", static_stack_is_full(&stack));
+   /* Initialize (only once) */
+   if (push_count == 0)
+      static_stack_init(&stack);
 
-   while (!static_stack_is_empty(&stack))
-   {
-      printf("%d\n", *static_stack_peek(&stack));
-      static_stack_pop(&stack);
-   }
-	return 0;
+   /* Push values */
+   static_stack_push(&stack, &a);
+   static_stack_push(&stack, &b);
+   static_stack_push(&stack, &c);
+   push_count += 3;
+
+   /* Read and verify */
+   int *top = static_stack_peek(&stack);
+   printf("Top: %d\n", *top);
+
+   static_stack_pop(&stack);
+   top = static_stack_peek(&stack);
+   printf("Next: %d\n", *top);
+
+   static_stack_pop(&stack);
+   top = static_stack_peek(&stack);
+   printf("Bottom: %d\n", *top);
+
+   /* Prevent optimization by using a global side effect */
+   static volatile int dummy = 0;
+   dummy = push_count;
+   return 0;
 }
 
 #endif /* HUZLIB_STATIC_STACK_TEST */

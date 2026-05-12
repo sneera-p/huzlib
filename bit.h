@@ -512,20 +512,72 @@
  */
 #ifndef unreachable
 #if (__STDC_VERSION__ >= 202311L)
-   #include <stdlib.h>
+   #include <stddef.h>
 
-#elif defined(__GNUC__) || defined(__clang__)
+#elif defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
    #define unreachable() __builtin_unreachable()
 
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) || defined(__POCC__)
    #define unreachable() __assume(0)
 
 #else
-   #include <assert.h>
-   #define unreachable() assert(0)
+   #define unreachable() do { for(;;); } while(0)
 
 #endif
 #endif /* unreachable */
+
+
+
+#ifndef __huzlib_assert
+/*
+ * first, we check for NDEBUG, 
+ * which means we are compiling under Optimized mode
+ */
+#ifdef NDEBUG
+
+   #define __huzlib_assert(cond) ((void)0)
+
+#else
+   /*
+    * now we check for -freestanding, 
+    * which means <assert.h> is not available
+    */
+   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0)
+
+      #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __builtin_trap();             \
+         } while(0)
+
+      #elif defined(_MSC_VER) || defined(__POCC__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __debugbreak();               \
+         } while(0)
+
+      #else
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond)) {                   \
+               volatile int *__huz_fail = 0; \
+               (void)*__huz_fail;            \
+            }                                \
+         } while(0)
+
+      #endif
+
+   #else
+
+      #include <assert.h>
+      #define __huzlib_assert(cond) assert(cond)
+
+   #endif /* __STDC_HOSTED__ */
+
+#endif /* NDEBUG */
+#endif /* __huzlib_assert */
 
 
 #endif /* HUZLIB_BIT_INCLUDES */
@@ -701,7 +753,9 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
    typeof(off) *__huzuq(__off) = &(off);                                                        \
    typeof(a) *__huzuq(__a) = &(a);                                                              \
    typeof(b) *__huzuq(__b) = &(b);                                                              \
-   assert(*__huzuq(__cnt) + *__huzuq(__off) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a)));  \
+   __huzlib_assert(                                                                             \
+      *__huzuq(__cnt) + *__huzuq(__off) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a))        \
+   );                                                                                           \
    BIT_SWAP(*__huzuq(__cnt), *__huzuq(__off), *__huzuq(__a), *__huzuq(__b));                    \
 } while(0)
 
@@ -709,7 +763,9 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
    typeof(cnt) *__huzuq(__cnt) = &(cnt);                                                        \
    typeof(a) *__huzuq(__a) = &(a);                                                              \
    typeof(b) *__huzuq(__b) = &(b);                                                              \
-   assert(*__huzuq(__cnt) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a)));                    \
+   __huzlib_assert(                                                                             \
+      *__huzuq(__cnt) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a))                          \
+   );                                                                                           \
    BIT_SWAP_LS(*__huzuq(__cnt), *__huzuq(__a), *__huzuq(__b));                                  \
 } while(0)
 
@@ -717,7 +773,9 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
    typeof(cnt) *__huzuq(__cnt) = &(cnt);                                                        \
    typeof(a) *__huzuq(__a) = &(a);                                                              \
    typeof(b) *__huzuq(__b) = &(b);                                                              \
-   assert(*__huzuq(__cnt) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a)));                    \
+   __huzlib_assert(                                                                             \
+      *__huzuq(__cnt) <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(*__huzuq(__a))                          \
+   );                                                                                           \
    BIT_SWAP_MS(*__huzuq(__cnt), *__huzuq(__a), *__huzuq(__b));                                  \
 } while(0)
 
@@ -727,7 +785,6 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_LIB_PROTOS, HUZLIB_BIT_INTERNAL_DE
 #ifdef HUZLIB_BIT_IMPL
 
 
-#include <assert.h>
 #include <stdint.h>
 
 
@@ -1123,7 +1180,7 @@ HUZLIB_BIT_API type bit_first_leading_one_##type(type w) __huzlib_unsequenced__ 
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE(type, ...)  HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FIRST_LEADING_ONE_CLZ_FALLBACK(type)
 
-_Static_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
+_Static___huzlib_assert(0, "In the immortal words of Linus Trovalds, Nvidia Fuck you!");
 #endif
 
 
@@ -1593,7 +1650,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                            \
       HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__  \
       {                                                                                            \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                             \
          type ret;                                                                                 \
          switch(sizeof(type))                                                                      \
          {                                                                                         \
@@ -1610,7 +1667,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                           \
       HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__ \
       {                                                                                            \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                             \
          type ret;                                                                                 \
          switch(sizeof(type))                                                                      \
          {                                                                                         \
@@ -1629,7 +1686,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                            \
       HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__  \
       {                                                                                            \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                             \
          type ret;                                                                                 \
          switch(sizeof(type))                                                                      \
          {                                                                                         \
@@ -1645,7 +1702,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
       #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                           \
       HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__ \
       {                                                                                            \
-         assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                      \
+         __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                             \
          type ret;                                                                                 \
          switch(sizeof(type))                                                                      \
          {                                                                                         \
@@ -1675,7 +1732,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                               \
    HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__     \
    {                                                                                               \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                \
       type ret;                                                                                    \
       switch(sizeof(type))                                                                         \
       {                                                                                            \
@@ -1690,7 +1747,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                              \
    HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__    \
    {                                                                                               \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                \
       type ret;                                                                                    \
       switch(sizeof(type))                                                                         \
       {                                                                                            \
@@ -1707,14 +1764,14 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_FLOOR, _)
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT(type, ...)                               \
    HUZLIB_BIT_API type bit_rotate_left_##type(type w, unsigned int rot) __huzlib_unsequenced__     \
    {                                                                                               \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                \
       return HUZLIB_BIT_IMPL_ROTL_GENERIC(w, rot);                                                 \
    }
 
    #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT(type, ...)                              \
    HUZLIB_BIT_API type bit_rotate_right_##type(type w, unsigned int rot) __huzlib_unsequenced__    \
    {                                                                                               \
-      assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
+      __huzlib_assert(rot <= HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                \
       return HUZLIB_BIT_IMPL_ROTR_GENERIC(w, rot);                                                 \
    }
 
@@ -1733,7 +1790,7 @@ HUZLIB_BIT_INTERNAL_TYPES(HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT, _)
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_LEFT_PART(type, ...)                                               \
 HUZLIB_BIT_API type bit_rotate_left_part_##type(type w, unsigned int rot, unsigned int cnt) __huzlib_unsequenced__   \
 {                                                                                                                    \
-   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                                  \
+   __huzlib_assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
    if (rot == 0 || cnt == 0)                                                                                         \
       return w;                                                                                                      \
                                                                                                                      \
@@ -1748,7 +1805,7 @@ HUZLIB_BIT_API type bit_rotate_left_part_##type(type w, unsigned int rot, unsign
 #define HUZLIB_BIT_INTERNAL_GENERATE_PROTO_ROTATE_RIGHT_PART(type, ...)                                              \
 HUZLIB_BIT_API type bit_rotate_right_part_##type(type w, unsigned int rot, unsigned int cnt) __huzlib_unsequenced__  \
 {                                                                                                                    \
-   assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                                  \
+   __huzlib_assert(rot < cnt && cnt < HUZLIB_BIT_INTERNAL_TYPE_WIDTH(type));                                         \
    if (rot == 0 || cnt == 0)                                                                                         \
       return w;                                                                                                      \
                                                                                                                      \

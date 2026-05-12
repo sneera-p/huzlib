@@ -379,6 +379,59 @@
 
 
 
+#ifndef __huzlib_assert
+/*
+ * first, we check for NDEBUG, 
+ * which means we are compiling under Optimized mode
+ */
+#ifdef NDEBUG
+
+   #define __huzlib_assert(cond) ((void)0)
+
+#else
+   /*
+    * now we check for -freestanding, 
+    * which means <assert.h> is not available
+    */
+   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0)
+
+      #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __builtin_trap();             \
+         } while(0)
+
+      #elif defined(_MSC_VER) || defined(__POCC__)
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond))                     \
+               __debugbreak();               \
+         } while(0)
+
+      #else
+
+         #define __huzlib_assert(cond) do {  \
+            if (!(cond)) {                   \
+               volatile int *__huz_fail = 0; \
+               (void)*__huz_fail;            \
+            }                                \
+         } while(0)
+
+      #endif
+
+   #else
+
+      #include <assert.h>
+      #define __huzlib_assert(cond) assert(cond)
+
+   #endif /* __STDC_HOSTED__ */
+
+#endif /* NDEBUG */
+#endif /* __huzlib_assert */
+
+
+
 /*
  * __huzlib_memcpy(dest, src, n)
  * -----------------------------
@@ -572,7 +625,6 @@ extern HUZLIB_STACK_API void __stack_clear(struct __huzlib_stack *stack);
 
 #ifdef HUZLIB_STACK_IMPL
 
-#include <assert.h>
 #include <stdint.h>
 
 
@@ -590,7 +642,7 @@ STACK_TAIL(unsigned char, /* empty */, __huzlib_stack_tail);
 HUZLIB_STACK_INTERNAL __huzlib_const__
 unsigned char *__chunk_buf_alignup(uintptr_t addr, size_t align) __huzlib_unsequenced__
 {
-   assert(align > 0 && (align & (align - 1)) == 0);
+   __huzlib_assert(align > 0 && (align & (align - 1)) == 0);
    size_t offset = (align - (addr & (align - 1))) & (align - 1);
    return (unsigned char *)(addr + offset);
 }
@@ -602,7 +654,7 @@ unsigned char *__chunk_buf_alignup(uintptr_t addr, size_t align) __huzlib_unsequ
 HUZLIB_STACK_INTERNAL __huzlib_pure__
 void *__stack_chunk_peek(struct __huzlib_stack_chunk *restrict chunk, size_t unit_size, size_t align, size_t lenb) __huzlib_reproducible__
 {
-   assert(chunk && (lenb > 0));
+   __huzlib_assert(chunk && (lenb > 0));
    unsigned char *restrict aligned = __chunk_buf_alignup((uintptr_t)&chunk->buf, align);
    return (void *)(aligned + lenb - unit_size);
 }
@@ -610,7 +662,7 @@ void *__stack_chunk_peek(struct __huzlib_stack_chunk *restrict chunk, size_t uni
 HUZLIB_STACK_INTERNAL 
 void __stack_chunk_push(struct __huzlib_stack_chunk *restrict chunk, size_t size, size_t unit_size, size_t align, size_t lenb, const void *restrict new)
 {
-   assert(chunk && new && (lenb < size));
+   __huzlib_assert(chunk && new && (lenb < size));
    unsigned char *restrict aligned = __chunk_buf_alignup((uintptr_t)&chunk->buf, align);
    __huzlib_memcpy(aligned + lenb, new, unit_size);
 }
@@ -621,7 +673,7 @@ void __stack_chunk_push(struct __huzlib_stack_chunk *restrict chunk, size_t size
 HUZLIB_STACK_INTERNAL
 void __stack_tail_add(struct __huzlib_stack_tail *restrict tail, struct __huzlib_stack_chunk *restrict new)
 {
-   assert(tail && new);
+   __huzlib_assert(tail && new);
    new->prev = (void *)tail->chunk;
    tail->chunk = (typeof(tail->chunk))new;
 }
@@ -629,7 +681,7 @@ void __stack_tail_add(struct __huzlib_stack_tail *restrict tail, struct __huzlib
 HUZLIB_STACK_INTERNAL
 void __stack_tail_rm(struct __huzlib_stack_tail *restrict tail)
 {
-   assert(tail && tail->chunk);
+   __huzlib_assert(tail && tail->chunk);
    tail->chunk = (typeof(tail->chunk))tail->chunk->prev;
 }
 
@@ -639,7 +691,7 @@ void __stack_tail_rm(struct __huzlib_stack_tail *restrict tail)
 HUZLIB_STACK_INTERNAL __huzlib_pure__
 struct __huzlib_stack_chunk *__stack_tail_chunk(const struct __huzlib_stack *restrict stack) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    return (struct __huzlib_stack_chunk *)stack->tail.chunk;
 }
 
@@ -648,14 +700,14 @@ struct __huzlib_stack_chunk *__stack_tail_chunk(const struct __huzlib_stack *res
 HUZLIB_STACK_API 
 void __stack_init(struct __huzlib_stack *restrict stack, void *(*alloc)(size_t), void (*dealloc)(void *))
 {
-   assert(stack && alloc && dealloc);
+   __huzlib_assert(stack && alloc && dealloc);
    *stack = STACK_INIT(*stack, alloc, dealloc);
 }
 
 HUZLIB_STACK_API __huzlib_pure__ 
 bool __stack_is_empty(const struct __huzlib_stack *restrict stack) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    /*
     * The stack exists as chunks. So if the stack is truly empty,
     * there can be only one chunk with no elements (lenb == 0)
@@ -668,7 +720,7 @@ bool __stack_is_empty(const struct __huzlib_stack *restrict stack) __huzlib_repr
 HUZLIB_STACK_API __huzlib_pure__ 
 bool __stack_is_full(const struct __huzlib_stack *restrict stack, size_t size) __huzlib_reproducible__
 {
-   assert(stack);
+   __huzlib_assert(stack);
    /*
     * By definition a new chunk is allocated only when the previous one is full.
     * So we don't need to check if all chunks are full nor do we need to track 
@@ -683,7 +735,7 @@ bool __stack_is_full(const struct __huzlib_stack *restrict stack, size_t size) _
 HUZLIB_STACK_API __huzlib_pure__ 
 void *__stack_peek(const struct __huzlib_stack *restrict stack, size_t size, size_t unit_size, size_t align) __huzlib_reproducible__
 {
-   assert(!__stack_is_empty(stack));
+   __huzlib_assert(!__stack_is_empty(stack));
    struct __huzlib_stack_chunk *restrict chunk = __stack_tail_chunk(stack);
 
    if (__huzlib_unlikely__(stack->top_lenb == 0))
@@ -705,7 +757,7 @@ void *__stack_peek(const struct __huzlib_stack *restrict stack, size_t size, siz
 HUZLIB_STACK_API 
 void __stack_push(struct __huzlib_stack *restrict stack, size_t size, size_t unit_size, size_t align, const void *restrict new)
 {
-   assert(stack && new);
+   __huzlib_assert(stack && new);
    struct __huzlib_stack_chunk *restrict chunk;
 
    if (__huzlib_unlikely__(__stack_is_full(stack, size) || __stack_tail_chunk(stack) == NULL))
@@ -731,7 +783,7 @@ void __stack_push(struct __huzlib_stack *restrict stack, size_t size, size_t uni
 HUZLIB_STACK_API 
 void __stack_pop(struct __huzlib_stack *restrict stack, size_t size, size_t unit_size)
 {
-   assert(!__stack_is_empty(stack));
+   __huzlib_assert(!__stack_is_empty(stack));
    struct __huzlib_stack_chunk *restrict chunk = __stack_tail_chunk(stack);
 
    if (__huzlib_unlikely__(stack->top_lenb == 0))
