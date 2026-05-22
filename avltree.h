@@ -531,7 +531,7 @@
  */
 struct avl_node
 {
-   uintptr_t __parent_vbalance;
+   uintptr_t __parent_vbalance; // WARN: Do not fucking change this (keep offset 0)
    struct avl_node *left, *right;
 };
 
@@ -607,18 +607,68 @@ struct avl_root_linked
 #define AVL_ROOT_LINKED_INIT  ((struct avl_root_linked) { .root = AVL_ROOT_INIT, .first = NULL })
 
 
-#define avl_entry(ptr, type, avl_member)  (        \
-   typecheck(struct avl_node, *(ptr)),             \
-   container_of(ptr, type, avl_member)             \
+/*
+ * avl_entry(ptr, type, avl_member)
+ * ---------------------------------
+ * Just like container_of but with a built-in typecheck — ptr must be
+ * either struct avl_node * or struct avl_node_linked *, anything else
+ * is a compile error. This stops you from accidentally passing the wrong
+ * pointer type and silently getting a garbage result out of container_of.
+ *
+ * The _Generic is not doing any conversion here — both branches do the
+ * exact same thing. It is purely acting as a type gate.
+ */
+#define avl_entry(ptr, type, avl_member) _Generic(*(ptr),       \
+   struct avl_node:        container_of(ptr, type, avl_member), \
+   struct avl_node_linked: container_of(ptr, type, avl_member)  \
 )
 
-#define avl_linked_entry(ptr, type, avl_member) (  \
-   typecheck(struct avl_node_linked, *(ptr)),      \
-   container_of(ptr, type, avl_member)             \
+
+/*
+ * avl_cached(ptr) and avl_linked(ptr)
+ * ------------------------------------
+ * AVL trees come in 3 flavours — plain (avl_root/avl_node), cached
+ * (avl_root_cached) and linked (avl_root_linked/avl_node_linked).
+ * Code that works with one flavour often needs to convert to another,
+ * for example passing a cached root into a function that takes a plain
+ * root, or wrapping a plain node into a linked node.
+ *
+ * Instead of remembering a bunch of different conversion functions for
+ * each direction and each type, you just pass the pointer and _Generic
+ * picks the right conversion automatically based on its type. Both
+ * directions are handled by the same macro.
+ *
+ *    avl_cached(ptr):
+ *       struct avl_root *        ->  struct avl_root_cached *   (wrap)
+ *       struct avl_root_cached * ->  struct avl_root *          (unwrap)
+ *
+ *    avl_linked(ptr):
+ *       struct avl_root *        ->  struct avl_root_linked *   (wrap)
+ *       struct avl_node *        ->  struct avl_node_linked *   (wrap)
+ *       struct avl_root_linked * ->  struct avl_root *          (unwrap)
+ *       struct avl_node_linked * ->  struct avl_node *          (unwrap)
+ *
+ * One subtle point — _Generic requires ALL branches to be semantically
+ * valid even when not selected. So each branch explicitly casts ptr to
+ * the correct struct pointer type before accessing its member, rather
+ * than relying on the original ptr type. This avoids "struct X has no
+ * member named Y" errors on non-selected branches.
+ */
+#define avl_cached(ptr) _Generic(*(ptr),                                                  \
+   struct avl_root:        (container_of((void *)(ptr), struct avl_root_cached, root)),   \
+   struct avl_root_cached: (&((struct avl_root_cached *)(ptr))->root)                     \
+)
+
+#define avl_linked(ptr) _Generic(*(ptr),                                                  \
+   struct avl_root:        (container_of((void *)(ptr), struct avl_root_linked, root)),   \
+   struct avl_node:        (container_of((void *)(ptr), struct avl_node_linked, node)),   \
+   struct avl_root_linked: (&((struct avl_root_linked *)(ptr))->root),                    \
+   struct avl_node_linked: (&((struct avl_node_linked *)(ptr))->node)                     \
 )
 
 
 /* --- sanity checks --- */
+_Static_assert(offsetof(struct avl_node, __parent_vbalance) == 0, "Do not fuck with the avl_node type");
 _Static_assert(offsetof(struct avl_root_cached, root) == 0, "Do not fuck with the avl_root_cached type");
 _Static_assert(offsetof(struct avl_root_linked, root) == 0, "Do not fuck with the avl_root_linked type");
 _Static_assert(offsetof(struct avl_node_linked, node) == 0, "Do not fuck with the avl_node_linked type");
@@ -627,43 +677,52 @@ _Static_assert(offsetof(struct avl_node_linked, node) == 0, "Do not fuck with th
 /*
  * AVL Augmentation Callbacks
  * --------------------------
- * Provides hooks for maintaining augmented data (e.g., subtree sizes,
- * interval max endpoints, priority sums) during tree operations.
+ * Some AVL tree use cases need to maintain extra data per node that
+ * depends on the subtree below it — things like subtree sizes, interval
+ * max endpoints, or priority sums. This is called augmentation.
  *
- * All callbacks are optional (may be NULL), but providing NULL for any
- * callback simply skips that augmentation step.
+ * To support this, the internal tree operations (insert rebalance, eject
+ * rebalance, rotation) expose hooks so the caller can keep their extra
+ * data in sync as the tree changes shape. These hooks are the augmentation
+ * callbacks.
  *
- * The callbacks are designed to be zero-cost abstractions when inlined:
- *   - All functions are static inline in headers
- *   - const callback pointers enable constant propagation
- *   - With -O2, all indirection is eliminated
+ * The public API (avl_insert, avl_eject etc.) uses dummy no-op callbacks
+ * internally — so augmentation is truly zero cost when not needed. For
+ * augmented trees, use the _augmented variants and pass your callbacks.
+ *
+ * All callbacks are force_inlined and called with concrete known function
+ * pointers, so the compiler folds them away completely at -O2. Zero overhead.
  *
  * @update:    Recompute a node's augmented value from its children.
- *             Called on a node when its children may have changed.
- *             Must read node->left and node->right, compute new value,
- *             and store it in the node's augmentation field.
+ *             Called on each node while walking up the tree during
+ *             rebalancing. At each step, the node's children may have
+ *             changed, so the augmented value must be recomputed.
  *
  *             Called during:
- *               - During propagate walks
+ *               - Walking up the tree during insert/eject rebalancing
  *
- * @copy:      Copy augmentation data from old node to new node.
- *             Called during ejection when a node is replaced by its
- *             successor. Must copy all augmentation data from @old to @new.
+ * @copy:      Copy augmented data from one node to another.
+ *             When ejecting a node with two children, the node is replaced
+ *             by its inorder successor. The successor takes the ejected
+ *             node's place in the tree, so its augmented data must be
+ *             copied over too.
  *
  *             Called during:
  *               - Ejection of nodes with 2 children (successor replacement)
  *
- * @rotate:    Update augmentation after a rotation.
- *             Called after a rotation has been performed. Should update
- *             the two rotated nodes (typically by calling update on both).
+ * @rotate:    Update augmented data after a rotation.
+ *             Called immediately after a left or right rotation is performed.
+ *             Typically just calls update on the two rotated nodes.
  *
  *             Called during:
- *               - after rotate_left/right
+ *               - After every rotate_left / rotate_right
  *
- * @propagate: Bulk update of a path from @start up to @stop (exclusive).
- *             Walks from @start up the parent pointers, calling update on
- *             each node, until @stop is reached. May early-terminate if
- *             augmentation values don't change.
+ * @propagate: Bulk update from a node up to a stop point (exclusive).
+ *             When rebalancing finishes early (height unchanged after a
+ *             rotation), the tree above the rebalancing point has not been
+ *             visited yet. propagate walks from that point up to the root,
+ *             calling update on each node on the way. It may early-terminate
+ *             if the augmented value stops changing.
  *
  *             If @stop is NULL, propagates all the way to the root.
  *
@@ -689,20 +748,42 @@ _Static_assert(offsetof(struct avl_node_linked, node) == 0, "Do not fuck with th
  *   }
  *
  *   static void os_propagate(struct avl_node *start, struct avl_node *stop) {
- *       struct avl_node *node = start;
- *       while (node != stop) {
- *           os_update(node);
- *           if (value unchanged) break;
- *           node = avl_parent(node);
+ *       while (start != stop) {
+ *           size_t old_size = os_size(start);
+ *           os_update(start);
+ *           if (os_size(start) == old_size) break; // early terminate
+ *           start = avl_parent(start);
  *       }
  *   }
  *
  *   const struct avl_augment_callbacks os_callbacks = {
- *       .update = os_update,
- *       .copy = os_copy,
- *       .rotate = os_rotate,
+ *       .update    = os_update,
+ *       .copy      = os_copy,
+ *       .rotate    = os_rotate,
  *       .propagate = os_propagate,
  *   };
+ *
+ *
+ * Performance note:
+ *    The augmented variants (avl_eject_augmented, avl_insert_augmented etc.)
+ *    are force_inlined. This means every call site gets the entire rebalance
+ *    logic inlined into it with your concrete callbacks folded in — which is
+ *    exactly what you want for zero overhead, but only if you call them from
+ *    ONE place.
+ *
+ *    The recommended pattern is to wrap your augmented call in a plain
+ *    non-inlined function, exactly like the library does for avl_eject:
+ *
+ *       void os_eject(struct avl_root *root, struct os_node *node) {
+ *           avl_eject_augmented(root, &node->avl, &os_augment);
+ *       }
+ *
+ *    avl_eject_augmented inlines once inside os_eject, the compiler sees
+ *    the concrete os_augment callbacks and folds them in, and every call
+ *    site just calls os_eject normally. One copy of the logic, zero
+ *    function pointer overhead. If you skip this and call avl_eject_augmented
+ *    directly at multiple call sites, the entire rebalance logic gets
+ *    duplicated at each one and your binary size explodes.
  */
 struct avl_augment_callbacks
 {
@@ -725,19 +806,6 @@ extern HUZLIB_AVL_TREE_API_INLINE void avl_root_linked_init(struct avl_root_link
 /* --- getters --- */
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node *avl_parent(const struct avl_node *node) __huzlib_reproducible__;
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node *node) __huzlib_reproducible__;
-
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *root) __huzlib_unsequenced__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *root) __huzlib_unsequenced__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *node) __huzlib_unsequenced__;
-
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *root) __huzlib_unsequenced__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *root) __huzlib_unsequenced__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *node) __huzlib_unsequenced__;
-
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *node) __huzlib_reproducible__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *node) __huzlib_reproducible__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *node) __huzlib_reproducible__;
-extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *node) __huzlib_reproducible__;
 
 
 /* --- mutate operations --- */
@@ -778,7 +846,7 @@ extern bool avl_verify(const struct avl_node *node);
 #endif /* NDEBUG */
 
 
-// /* --- query operations --- */
+/* --- query operations --- */
 extern HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_root *root) __huzlib_reproducible__;
 extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_first(const struct avl_root *root);
 extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_last(const struct avl_root *root);
@@ -818,6 +886,7 @@ extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const str
 #else
    #define HUZLIB_AVL_TREE_INTERNAL static
 #endif /* NDEBUG */
+
 
 /*
  * __avl_parent(parent_vbalance)
@@ -1952,87 +2021,6 @@ HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_balance(const struct avl_node
 }
 
 
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_cached_root(const struct avl_root_cached *restrict root) __huzlib_unsequenced__
-{
-   return (struct avl_root *)&root->root;
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root *avl_linked_root(const struct avl_root_linked *restrict root) __huzlib_unsequenced__
-{
-   return (struct avl_root *)&root->root;
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node *avl_linked_node(const struct avl_node_linked *restrict node) __huzlib_unsequenced__
-{
-   return (struct avl_node *)&node->node;
-}
-
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_cached *avl_cached_wrap_root(const struct avl_root *restrict root) __huzlib_unsequenced__
-{
-   return (struct avl_root_cached *)container_of(root, struct avl_root_cached, root);
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_root_linked *avl_linked_wrap_root(const struct avl_root *restrict root) __huzlib_unsequenced__
-{
-   return (struct avl_root_linked *)container_of(root, struct avl_root_linked, root);
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_const__ struct avl_node_linked *avl_linked_wrap_node(const struct avl_node *restrict node) __huzlib_unsequenced__
-{
-   return (struct avl_node_linked *)container_of(node, struct avl_node_linked, node);
-}
-
-
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_left(const struct avl_node_linked *restrict node) __huzlib_reproducible__
-{
-   struct avl_node *tmp = avl_linked_node(node)->left;
-   /*
-    * assuming avl_node is at offset 0 inside avl_node_linked,
-    * compiler optimizes the branch away to:
-    *   return (struct avl_node_linked *)tmp;
-    */
-   if (tmp)
-      return container_of(tmp, struct avl_node_linked, node);
-   else
-      return NULL;
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_right(const struct avl_node_linked *restrict node) __huzlib_reproducible__
-{
-   struct avl_node *tmp = avl_linked_node(node)->right;
-   /*
-    * assuming avl_node is at offset 0 inside avl_node_linked,
-    * compiler optimizes the branch away to:
-    *   return (struct avl_node_linked *)tmp;
-    */
-   if (tmp)
-      return container_of(tmp, struct avl_node_linked, node);
-   else
-      return NULL;
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ struct avl_node_linked *avl_linked_parent(const struct avl_node_linked *restrict node) __huzlib_reproducible__
-{
-   struct avl_node *tmp = avl_parent(avl_linked_node(node));
-   /*
-    * assuming avl_node is at offset 0 inside avl_node_linked,
-    * compiler optimizes the branch away to:
-    *   return (struct avl_node_linked *)tmp;
-    */
-   if (tmp)
-      return container_of(tmp, struct avl_node_linked, node);
-   else
-      return NULL;
-}
-
-HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ int avl_linked_balance(const struct avl_node_linked *restrict node) __huzlib_reproducible__
-{
-   return avl_balance(avl_linked_node(node));
-}
-
-
 
 /* -------------------------------------------------- */
 /* --------------- mutate operations  --------------- */
@@ -2084,9 +2072,9 @@ HUZLIB_AVL_TREE_API_INLINE void avl_link_node(struct avl_node *restrict node, st
  */
 HUZLIB_AVL_TREE_API_INLINE void avl_link_node_linked(struct avl_node_linked *restrict node, struct avl_node_linked *restrict parent, struct avl_node **restrict link, bool isleft)
 {
-   __huzlib_assert(node && ((!parent) || ((isleft) ? (avl_linked_node(parent)->left == *link) : (avl_linked_node(parent)->right == *link))));
+   __huzlib_assert(node && ((!parent) || ((isleft) ? (avl_linked(parent)->left == *link) : (avl_linked(parent)->right == *link))));
 
-   avl_link_node(avl_linked_node(node), avl_linked_node(parent), link);
+   avl_link_node(avl_linked(node), avl_linked(parent), link);
    if (isleft)
       __avl_add_linked(node, parent->prev, parent);
    else if (parent) /* right-child insertion */
@@ -2151,7 +2139,7 @@ HUZLIB_AVL_TREE_API void avl_eject_cached(struct avl_root_cached *restrict root,
 HUZLIB_AVL_TREE_API_INLINE void avl_eject_cached_augmented(struct avl_root_cached *restrict root, struct avl_node *restrict node, const struct avl_augment_callbacks *restrict augment)
 {
    __huzlib_assert(root);
-   struct avl_node *tmp = __avl_eject(avl_cached_root(root), node, augment);
+   struct avl_node *tmp = __avl_eject(avl_cached(root), node, augment);
    if (node == root->first)
       root->first = tmp;
 }
@@ -2180,9 +2168,9 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
    __huzlib_assert(root && node && augment);
 
    bool isleft;
-   struct avl_node *restrict base_node = avl_linked_node(node);
+   struct avl_node *restrict base_node = avl_linked(node);
    struct avl_node *restrict base_parent = avl_parent(base_node);
-   struct avl_node **restrict link = __avl_parent_ptr(avl_linked_root(root), base_node, base_parent, &isleft);
+   struct avl_node **restrict link = __avl_parent_ptr(avl_linked(root), base_node, base_parent, &isleft);
 
    if (base_node->left && base_node->right)
    {
@@ -2197,7 +2185,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
        *  (a) (b) (v) (x)
        */
 
-      struct avl_node *restrict succ = avl_linked_node(node->next);
+      struct avl_node *restrict succ = avl_linked(node->next);
       if (succ == base_node->right)
       {
          /*
@@ -2293,7 +2281,7 @@ HUZLIB_AVL_TREE_API_INLINE void avl_eject_linked_augmented(struct avl_root_linke
    }
 
    __avl_rm_linked(node->prev, node->next);
-   __avl_eject_rebalance(avl_linked_root(root), base_parent, isleft, augment);
+   __avl_eject_rebalance(avl_linked(root), base_parent, isleft, augment);
 }
 
 
@@ -2366,16 +2354,16 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_eject_first_cached_augmented(str
 {
    __huzlib_assert(root && augment);
 
-   if (__huzlib_unlikely__(avl_is_empty(avl_cached_root(root))))
+   if (__huzlib_unlikely__(avl_is_empty(avl_cached(root))))
       return NULL;
 
    struct avl_node *restrict node = root->first;
    struct avl_node *restrict parent;
 
-   if (node == avl_cached_root(root)->node)
+   if (node == avl_cached(root)->node)
    {
       parent = NULL;
-      __avl_delink_node(node->right, parent, &avl_cached_root(root)->node);
+      __avl_delink_node(node->right, parent, &avl_cached(root)->node);
    }
    else
    {
@@ -2383,7 +2371,7 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_eject_first_cached_augmented(str
       __avl_delink_node(node->right, parent, &parent->left);
    }
 
-   __avl_eject_rebalance(avl_cached_root(root), parent, true, augment);
+   __avl_eject_rebalance(avl_cached(root), parent, true, augment);
    root->first = (node->right) ? node->right : parent;
 
    return node;
@@ -2412,13 +2400,13 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_first_linked_augmen
 {
    __huzlib_assert(root && augment);
 
-   struct avl_root *restrict base_root = avl_linked_root(root);
+   struct avl_root *restrict base_root = avl_linked(root);
 
    if (__huzlib_unlikely__(avl_is_empty(base_root)))
       return NULL;
 
    struct avl_node_linked *restrict node = root->first;
-   struct avl_node *restrict base_node = avl_linked_node(node);
+   struct avl_node *restrict base_node = avl_linked(node);
    struct avl_node *restrict base_parent;
 
    if (base_node == base_root->node)
@@ -2508,7 +2496,7 @@ HUZLIB_AVL_TREE_API struct avl_node *avl_eject_last_cached(struct avl_root_cache
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_eject_last_cached_augmented(struct avl_root_cached *restrict root, const struct avl_augment_callbacks *restrict augment)
 {
-   struct avl_node *restrict node = avl_eject_last_augmented(avl_cached_root(root), augment);
+   struct avl_node *restrict node = avl_eject_last_augmented(avl_cached(root), augment);
    if (node == root->first)
       root->first = NULL;
    return node;
@@ -2535,8 +2523,8 @@ HUZLIB_AVL_TREE_API struct avl_node_linked *avl_eject_last_linked(struct avl_roo
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node_linked *avl_eject_last_linked_augmented(struct avl_root_linked *restrict root, const struct avl_augment_callbacks *restrict augment)
 {
-   struct avl_node *restrict base_node = avl_eject_last_augmented(avl_linked_root(root), augment);
-   struct avl_node_linked *restrict node = avl_linked_wrap_node(base_node);
+   struct avl_node *restrict base_node = avl_eject_last_augmented(avl_linked(root), augment);
+   struct avl_node_linked *restrict node = avl_linked(base_node);
    if (node == root->first)
       root->first = NULL;
    return node;
@@ -2841,22 +2829,22 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_postorder_first(const st
 /* ---------------- tree traversals  ---------------- */
 /* -------------------------------------------------- */
 
-HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_next(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_next(const struct avl_node *restrict node)
 {
    return __avl_next(NULL, node);
 }
 
-HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_prev(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_prev(const struct avl_node *restrict node)
 {
    return __avl_prev(NULL, node);
 }
 
-HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_preorder_next(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_preorder_next(const struct avl_node *restrict node)
 {
    return __avl_preorder_next(NULL, node);
 }
 
-HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_next(const struct avl_node *node)
+HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_next(const struct avl_node *restrict node)
 {
    return __avl_postorder_next(NULL, node);
 }
@@ -2867,25 +2855,25 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_next(const struct avl_
 /* -------------- subtree traversals  -------------- */
 /* ------------------------------------------------- */
 
-HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_next(const struct avl_node *subroot, const struct avl_node *node)
+HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_next(const struct avl_node *restrict subroot, const struct avl_node *restrict node)
 {
    __huzlib_assert(subroot);
    return __avl_next(avl_parent(subroot), node);
 }
 
-HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_prev(const struct avl_node *subroot, const struct avl_node *node)
+HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_prev(const struct avl_node *restrict subroot, const struct avl_node *restrict node)
 {
    __huzlib_assert(subroot);
    return __avl_prev(avl_parent(subroot), node);
 }
 
-HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_preorder_next(const struct avl_node *subroot, const struct avl_node *node)
+HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_preorder_next(const struct avl_node *restrict subroot, const struct avl_node *restrict node)
 {
    __huzlib_assert(subroot);
    return __avl_preorder_next(avl_parent(subroot), node);
 }
 
-HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const struct avl_node *subroot, const struct avl_node *node)
+HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const struct avl_node *restrict subroot, const struct avl_node *restrict node)
 {
    __huzlib_assert(subroot);
    return __avl_postorder_next(avl_parent(subroot), node);
@@ -2944,10 +2932,10 @@ static void avl_setup_test_node_linked(struct avl_node_linked *node, struct avl_
 {
    __huzlib_assert(node);
    avl_setup_test_node(
-      avl_linked_node(node),
-      avl_linked_node(left),
-      avl_linked_node(right),
-      avl_linked_node(parent),
+      avl_linked(node),
+      avl_linked(left),
+      avl_linked(right),
+      avl_linked(parent),
       balance
    );
    __avl_add_linked(node, prev, next); 
@@ -3791,7 +3779,7 @@ static void test_avl_eject_linked_2child_shallow_successor(void)
 
    root = (struct avl_root_linked) {
       .root = {
-         .node = avl_linked_node(&n),
+         .node = avl_linked(&n),
       },
       .first = &x,
    };
@@ -3810,26 +3798,26 @@ static void test_avl_eject_linked_2child_shallow_successor(void)
    avl_eject_linked(&root, &g);
 
    // Root unchanged
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
 
    // ancestor's balance unchanged
-   TEST_ASSERT_EQUAL( 1, avl_balance(avl_linked_node(&n)));
-   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&c)));
+   TEST_ASSERT_EQUAL( 1, avl_balance(avl_linked(&n)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&c)));
 
    // z now replaces g
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_linked_node(&z)->left);
-   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked_node(&z)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&c), avl_parent(avl_linked_node(&z)));
-   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&z)));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&y), avl_linked(&z)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked(&z)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&c), avl_parent(avl_linked(&z)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked(&z)));
 
    // y new parent is z
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&z), avl_parent(avl_linked_node(&y)));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&z), avl_parent(avl_linked(&y)));
 
    // c's right child is now z
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&x), avl_linked_node(&c)->left);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&z), avl_linked_node(&c)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&c)));
-   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&c)));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&x), avl_linked(&c)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&z), avl_linked(&c)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&c)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&c)));
 }
 
 static void test_avl_eject_linked_2child_deep_successor(void)
@@ -3853,7 +3841,7 @@ static void test_avl_eject_linked_2child_deep_successor(void)
 
    root = (struct avl_root_linked) {
       .root = {
-         .node = avl_linked_node(&n),
+         .node = avl_linked(&n),
       },
       .first = &x,
    };
@@ -3872,23 +3860,23 @@ static void test_avl_eject_linked_2child_deep_successor(void)
    avl_eject_linked(&root, &c);
 
    // Root unchanged
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
 
    // y now replaces c
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&x), avl_linked_node(&y)->left);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&g), avl_linked_node(&y)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&y)));
-   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&y)));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&x), avl_linked(&y)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&g), avl_linked(&y)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&y)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&y)));
 
    // g new parent is y
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_parent(avl_linked_node(&g)));
-   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked_node(&g)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&y), avl_parent(avl_linked(&g)));
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_linked(&g)->left);
 
    // n's left child is now y
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&y), avl_linked_node(&n)->left);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&w), avl_linked_node(&n)->right);
-   TEST_ASSERT_EQUAL_PTR(NULL,                avl_parent(avl_linked_node(&n)));
-   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&y), avl_linked(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&w), avl_linked(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL,                avl_parent(avl_linked(&n)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked(&n)));
 }
 
 static void test_avl_eject_linked_left_child_leaf(void)
@@ -3910,7 +3898,7 @@ static void test_avl_eject_linked_left_child_leaf(void)
 
    root = (struct avl_root_linked) {
       .root = {
-         .node = avl_linked_node(&n),
+         .node = avl_linked(&n),
       },
       .first = &c,
    };
@@ -3925,19 +3913,19 @@ static void test_avl_eject_linked_left_child_leaf(void)
    avl_eject_linked(&root, &w);
 
    // Root unchanged
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
 
    // u now replaces w
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&u)->left);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&u)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&u)));
-   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&u)));
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&u)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&u)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&u)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&u)));
 
    // n's right child is now u
-   TEST_ASSERT_EQUAL_PTR(&c, avl_linked_node(&n)->left);
-   TEST_ASSERT_EQUAL_PTR(&u, avl_linked_node(&n)->right);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked_node(&n)));
-   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL_PTR(&c, avl_linked(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(&u, avl_linked(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked(&n)));
+   TEST_ASSERT_EQUAL(1, avl_balance(avl_linked(&n)));
 }
 
 static void test_avl_eject_linked_right_child_leaf(void)
@@ -3959,7 +3947,7 @@ static void test_avl_eject_linked_right_child_leaf(void)
 
    root = (struct avl_root_linked) {
       .root = {
-         .node = avl_linked_node(&n),
+         .node = avl_linked(&n),
       },
       .first = &c,
    };
@@ -3974,20 +3962,20 @@ static void test_avl_eject_linked_right_child_leaf(void)
    avl_eject_linked(&root, &c);
 
    // Root unchanged, but 'first' changed
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
-   TEST_ASSERT_EQUAL_PTR(&x, avl_linked_node(root.first));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&x, avl_linked(root.first));
 
    // x now replaces c
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&x)->left);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&x)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&x)));
-   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&x)));
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&x)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&x)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&x)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&x)));
 
    // n's left child is now x
-   TEST_ASSERT_EQUAL_PTR(&x, avl_linked_node(&n)->left);
-   TEST_ASSERT_EQUAL_PTR(&w, avl_linked_node(&n)->right);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked_node(&n)));
-   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL_PTR(&x, avl_linked(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(&w, avl_linked(&n)->right);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_parent(avl_linked(&n)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&n)));
 }
 
 static void test_avl_eject_linked_leaf(void)
@@ -4009,7 +3997,7 @@ static void test_avl_eject_linked_leaf(void)
 
    root = (struct avl_root_linked) {
       .root = {
-         .node = avl_linked_node(&n),
+         .node = avl_linked(&n),
       },
       .first = &x,
    };
@@ -4026,33 +4014,33 @@ static void test_avl_eject_linked_leaf(void)
    avl_eject_linked(&root, &x);
 
    // Root unchanged, but 'first' changed
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
-   TEST_ASSERT_EQUAL_PTR(&c, avl_linked_node(root.first));
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(&c, avl_linked(root.first));
 
    // c now leaf node
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&c)->left);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&c)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&c)));
-   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&c)));
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&c)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&c)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&c)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&c)));
 
    // ancestor balance changed
-   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&n)));
 
 
    // --- TEST 2: eject (u) ---
    avl_eject_linked(&root, &u);
 
    // Root unchanged
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_linked_root(&root)->node);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_linked(&root)->node);
 
    // w now leaf node
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&w)->left);
-   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked_node(&w)->right);
-   TEST_ASSERT_EQUAL_PTR(avl_linked_node(&n), avl_parent(avl_linked_node(&w)));
-   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&w)));
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&w)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL, avl_linked(&w)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), avl_parent(avl_linked(&w)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&w)));
 
    // ancestor balance changed
-   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked_node(&n)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&n)));
 }
 
 
@@ -4227,7 +4215,7 @@ struct os_node
 
 static AVL_AUGMENT_TEST_HELPER void os_augment_update(struct avl_node *node)
 {
-   assert(node);
+   __huzlib_assert(node);
    struct os_node *osn = avl_entry(node, struct os_node, avl);
 
    size_t left_size = (node->left)
@@ -4243,7 +4231,7 @@ static AVL_AUGMENT_TEST_HELPER void os_augment_update(struct avl_node *node)
 
 static AVL_AUGMENT_TEST_HELPER void os_augment_copy(struct avl_node *old, struct avl_node *new)
 {
-   assert(old && new);
+   __huzlib_assert(old && new);
 
    struct os_node *os_old = avl_entry(old, struct os_node, avl);
    struct os_node *os_new = avl_entry(new, struct os_node, avl);
@@ -4275,7 +4263,7 @@ const struct avl_augment_callbacks os_callbacks = {
 
 static AVL_AUGMENT_TEST_HELPER void os_insert(struct avl_root *root, struct os_node *osn)
 {
-   assert(root && osn);
+   __huzlib_assert(root && osn);
 
    struct avl_node **link = &root->node;
    struct avl_node *parent = NULL;
@@ -4390,26 +4378,26 @@ struct os_node_linked
 
 static AVL_AUGMENT_TEST_HELPER void os_linked_augment_update(struct avl_node *node)
 {
-   assert(node);
+   __huzlib_assert(node);
 
-   struct os_node_linked *osn = avl_linked_entry(avl_linked_wrap_node(node), struct os_node_linked, avl);
+   struct os_node_linked *osn = avl_entry(avl_linked(node), struct os_node_linked, avl);
    size_t size = 1;
 
    if (node->left)
-      size += avl_linked_entry(avl_linked_wrap_node(node->left), struct os_node_linked, avl)->size;
+      size += avl_entry(avl_linked(node->left), struct os_node_linked, avl)->size;
 
    if (node->right)
-      size += avl_linked_entry(avl_linked_wrap_node(node->right), struct os_node_linked, avl)->size;
+      size += avl_entry(avl_linked(node->right), struct os_node_linked, avl)->size;
 
    osn->size = size;
 }
 
 static AVL_AUGMENT_TEST_HELPER void os_linked_augment_copy(struct avl_node *old, struct avl_node *new)
 {
-   assert(old && new);
+   __huzlib_assert(old && new);
 
-   struct os_node_linked *os_old = avl_linked_entry(avl_linked_wrap_node(old), struct os_node_linked, avl);
-   struct os_node_linked *os_new = avl_linked_entry(avl_linked_wrap_node(new), struct os_node_linked, avl);
+   struct os_node_linked *os_old = avl_entry(avl_linked(old), struct os_node_linked, avl);
+   struct os_node_linked *os_new = avl_entry(avl_linked(new), struct os_node_linked, avl);
 
    os_new->size = os_old->size;
 }
@@ -4438,25 +4426,25 @@ const struct avl_augment_callbacks os_linked_callbacks = {
 
 static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *root, struct os_node_linked *osn)
 {
-   assert(root && osn);
+   __huzlib_assert(root && osn);
 
-   struct avl_node **link = &avl_linked_root(root)->node;
+   struct avl_node **link = &avl_linked(root)->node;
    struct avl_node_linked *parent = NULL;
    bool isleft = false, isfirst = true;
 
    while (*link)
    {
-      parent = avl_linked_wrap_node(*link);
-      int key = avl_linked_entry(parent, struct os_node_linked, avl)->key;
+      parent = avl_linked(*link);
+      int key = avl_entry(parent, struct os_node_linked, avl)->key;
 
       if (osn->key < key)
       {
-         link = &avl_linked_node(parent)->left;
+         link = &avl_linked(parent)->left;
          isleft = true;
       }
       else
       {
-         link = &avl_linked_node(parent)->right;
+         link = &avl_linked(parent)->right;
          isleft = false;
          isfirst = false;
       }
@@ -4468,8 +4456,8 @@ static AVL_AUGMENT_TEST_HELPER void os_linked_insert(struct avl_root_linked *roo
    osn->size = 1;
    avl_link_node_linked(&osn->avl, parent, link, isleft);
    avl_insert_rebalance_augmented(
-      avl_linked_root(root),
-      avl_linked_node(parent),
+      avl_linked(root),
+      avl_linked(parent),
       isleft,
       &os_linked_callbacks
    );
@@ -4515,7 +4503,7 @@ static AVL_AUGMENT_TEST_HELPER bool os_linked_verify(struct avl_node *subroot)
       }
    }
 
-   return size == avl_linked_entry(avl_linked_wrap_node(subroot), struct os_node_linked, avl)->size;
+   return size == avl_entry(avl_linked(subroot), struct os_node_linked, avl)->size;
 }
 
 static void test_avl_linked_augmented_insert_eject(void)
@@ -4548,7 +4536,7 @@ static void test_avl_linked_augmented_insert_eject(void)
          intree[k] = true;
       }
 
-      TEST_ASSERT_TRUE(avl_verify_recursive(avl_linked_root(&root)->node, &os_linked_verify) != -1);
+      TEST_ASSERT_TRUE(avl_verify_recursive(avl_linked(&root)->node, &os_linked_verify) != -1);
    }
 }
 
