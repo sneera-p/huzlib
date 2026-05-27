@@ -4966,6 +4966,191 @@ static void test_avl_eject_linked_leaf(void)
 }
 
 
+static void test_avl_eject_first(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL,  0);
+   avl_setup_test_node(&c, &x, NULL, &n,  1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res = avl_eject_first(&root);
+
+   // returned the first node
+   TEST_ASSERT_EQUAL_PTR(&x, res);
+
+   // root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // c is now a leaf
+   TEST_ASSERT_EQUAL_PTR(NULL, c.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, c.right);
+   TEST_ASSERT_EQUAL_PTR(&n,   avl_parent(&c));
+   TEST_ASSERT_EQUAL(0, avl_balance(&c));
+
+   // n's structure unchanged, balance updated
+   TEST_ASSERT_EQUAL_PTR(&c, n.left);
+   TEST_ASSERT_EQUAL_PTR(&w, n.right);
+   TEST_ASSERT_EQUAL(-1, avl_balance(&n));
+}
+
+static void test_avl_eject_first_cached(void)
+{
+   struct avl_root_cached root = AVL_ROOT_CACHED_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.root.node = &n;
+   root.first = &x;
+   avl_setup_test_node(&n, &c, &w, NULL,  0);
+   avl_setup_test_node(&c, &x, NULL, &n,  1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res = avl_eject_first_cached(&root);
+
+   // returned the first node
+   TEST_ASSERT_EQUAL_PTR(&x, res);
+
+   // root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.root.node);
+
+   // cached first updated to c
+   TEST_ASSERT_EQUAL_PTR(&c, root.first);
+
+   // c is now a leaf
+   TEST_ASSERT_EQUAL_PTR(NULL, c.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, c.right);
+   TEST_ASSERT_EQUAL_PTR(&n,   avl_parent(&c));
+   TEST_ASSERT_EQUAL(0, avl_balance(&c));
+
+   // n balance updated
+   TEST_ASSERT_EQUAL_PTR(&c, n.left);
+   TEST_ASSERT_EQUAL_PTR(&w, n.right);
+   TEST_ASSERT_EQUAL(-1, avl_balance(&n));
+}
+
+static void test_avl_eject_first_linked(void)
+{
+   struct avl_root_linked root = AVL_ROOT_LINKED_INIT;
+   struct avl_node_linked n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.root.node = avl_linked(&n);
+   root.first = &x;
+   avl_setup_test_node(avl_linked(&n), avl_linked(&c), avl_linked(&w), NULL,              0);
+   avl_setup_test_node(avl_linked(&c), avl_linked(&x), NULL,           avl_linked(&n),    1);
+   avl_setup_test_node(avl_linked(&w), NULL,           avl_linked(&u), avl_linked(&n),   -1);
+   avl_setup_test_node(avl_linked(&x), NULL,           NULL,           avl_linked(&c),    0);
+   avl_setup_test_node(avl_linked(&u), NULL,           NULL,           avl_linked(&w),    0);
+
+   x.prev = NULL;  x.next = &c;
+   c.prev = &x;    c.next = &n;
+   n.prev = &c;    n.next = &w;
+   w.prev = &n;    w.next = &u;
+   u.prev = &w;    u.next = NULL;
+
+   struct avl_node_linked *res = avl_eject_first_linked(&root);
+
+   // returned the first node
+   TEST_ASSERT_EQUAL_PTR(&x, res);
+
+   // root unchanged
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n), root.root.node);
+
+   // linked list updated — c is now head
+   TEST_ASSERT_EQUAL_PTR(&c,   root.first);
+   TEST_ASSERT_EQUAL_PTR(NULL, c.prev);
+   TEST_ASSERT_EQUAL_PTR(&n,   c.next);
+
+   // c is now a leaf
+   TEST_ASSERT_EQUAL_PTR(NULL,            avl_linked(&c)->left);
+   TEST_ASSERT_EQUAL_PTR(NULL,            avl_linked(&c)->right);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&n),  avl_parent(avl_linked(&c)));
+   TEST_ASSERT_EQUAL(0, avl_balance(avl_linked(&c)));
+
+   // n balance updated
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&c), avl_linked(&n)->left);
+   TEST_ASSERT_EQUAL_PTR(avl_linked(&w), avl_linked(&n)->right);
+   TEST_ASSERT_EQUAL(-1, avl_balance(avl_linked(&n)));
+}
+
+static void test_avl_eject_last(void)
+{
+   struct avl_root root = AVL_ROOT_INIT;
+   struct avl_node n, c, w, x, u;
+
+   /*
+    * create structure
+    *
+    *       n
+    *      / \
+    *     c   w
+    *    /     \
+    *   x       u
+    */
+
+   root.node = &n;
+   avl_setup_test_node(&n, &c, &w, NULL,  0);
+   avl_setup_test_node(&c, &x, NULL, &n,  1);
+   avl_setup_test_node(&w, NULL, &u, &n, -1);
+   avl_setup_test_node(&x, NULL, NULL, &c, 0);
+   avl_setup_test_node(&u, NULL, NULL, &w, 0);
+
+   struct avl_node *res = avl_eject_last(&root);
+
+   // returned the last node
+   TEST_ASSERT_EQUAL_PTR(&u, res);
+
+   // root unchanged
+   TEST_ASSERT_EQUAL_PTR(&n, root.node);
+
+   // w is now a leaf
+   TEST_ASSERT_EQUAL_PTR(NULL, w.left);
+   TEST_ASSERT_EQUAL_PTR(NULL, w.right);
+   TEST_ASSERT_EQUAL_PTR(&n,   avl_parent(&w));
+   TEST_ASSERT_EQUAL(0, avl_balance(&w));
+
+   // n's structure unchanged, balance updated
+   TEST_ASSERT_EQUAL_PTR(&c, n.left);
+   TEST_ASSERT_EQUAL_PTR(&w, n.right);
+   TEST_ASSERT_EQUAL(1, avl_balance(&n));
+}
+
+
 static void test_avl_subtree_height(void)
 {
 #ifdef NDEBUG
@@ -5496,6 +5681,11 @@ int main(void)
    RUN_TEST(test_avl_eject_linked_left_child_leaf);
    RUN_TEST(test_avl_eject_linked_right_child_leaf);
    RUN_TEST(test_avl_eject_linked_leaf);
+   
+   RUN_TEST(test_avl_eject_first);
+   RUN_TEST(test_avl_eject_first_cached);
+   RUN_TEST(test_avl_eject_first_linked);
+   RUN_TEST(test_avl_eject_last);
 
    RUN_TEST(test_avl_subtree_height);
    RUN_TEST(test_avl_subtree_size);
@@ -5503,10 +5693,6 @@ int main(void)
 
    RUN_TEST(test_avl_augmented_insert_eject);
    RUN_TEST(test_avl_linked_augmented_insert_eject);
-
-   // TODO: test avl_eject_first*_augmented varitants (x3)
-
-   // TODO: test avl_eject_last_augmented (no need to test varitants)
 
    return UnityEnd();
 }
