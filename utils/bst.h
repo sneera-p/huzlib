@@ -783,7 +783,7 @@ HUZLIB_BST_INTERNAL struct bst_node **__huzlib_bst_parent_ptr(struct bst_node **
  * Other child 'o' (if it exists) is left dangling.
  * Relinking 'o' is the caller's responsibility.
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_delink_node(struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_delink_node(struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(link && ((!parent) || (parent->left == *link) || (parent->right == *link)));
    __huzlib_assert(((*link)->left == child) || ((*link)->right == child));
@@ -899,7 +899,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rm_linked(struct bst_node_linked *restrict
  * Caller must update them after rotation.
  *   eg: __rb_set_parent_color(node, child, RB_BLACK);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && link && (*link == node) && (node->right == child));
 
@@ -933,7 +933,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node
  * Caller must update them after rotation.
  *    eg: __rb_set_parent_color(node, child, RB_RED);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && link && (*link == node) && (node->left == child));
 
@@ -972,7 +972,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict nod
  *    eg: __splay_set_parent(node, child);
  *        __splay_set_parent(parent, node);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->right == node));
 
@@ -1017,7 +1017,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict
  *    eg: __splay_set_parent(node, child);
  *        __splay_set_parent(parent, node);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->left == node));
 
@@ -1063,7 +1063,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restri
  *    eg: __avl_set_parent_balance(node, child, x);
  *        __avl_set_parent_balance(parent, child, y);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->left == node));
 
@@ -1109,7 +1109,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restric
  *    eg: __avl_set_parent_balance(node, child, x);
  *        __avl_set_parent_balance(parent, child, y);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->right == node));
 

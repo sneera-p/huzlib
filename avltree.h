@@ -495,6 +495,1061 @@
 #endif /* __huzlib_assert */
 
 
+
+#ifndef HUZLIB_BST_H
+#define HUZLIB_BST_H
+
+/*
+ * So I plan to have 3 BSTs in this library:
+ *
+ *    1. AVL tree
+ *    2. Red-Black tree
+ *    3. Splay tree
+ *
+ * All 3 share the same traversal logic. The only difference is the node type.
+ *
+ * I don't want to write the same foreach code 3 times. That's stupid.
+ * So I make one set of macros here. The tree implementations just wrap them.
+ *
+ * There are 4 macros:
+ *
+ *    1. __bst_foreach
+ *       Walk through nodes. Simple.
+ *
+ *    2. __bst_foreach_safe
+ *       Same but you can delete the current node. Safe.
+ *
+ *    3. __bst_foreach_entry
+ *       Walk through containers (structs that hold a node).
+ *
+ *    4. __bst_foreach_entry_safe
+ *       Same but you can delete the current container. Safe.
+ *
+ *
+ * How do they know which order to walk?
+ * -------------------------------------------------
+ *
+ * They don't. You tell them.
+ *
+ * You give me two things:
+ *    start     -> the first node
+ *    traverse  -> how to get the next node from current
+ *
+ * That's it. I don't care if it's AVL, RB, Splay, or a damn linked list.
+ *
+ * Examples:
+ *    Inorder:     avl_first(root)     + avl_next(node)
+ *    Preorder:    root                + avl_preorder_next(node)
+ *    Postorder:   avl_postorder_first + avl_postorder_next(node)
+ *
+ * One macro. Infinite walks. One ring to rule them all.
+ *
+ *
+ * The dirty tricks (why the code looks weird)
+ * -------------------------------------------------
+ *
+ * 1. The _safe trick
+ * -------------------------------------------------
+ * Look at this:
+ *    ((node) != NULL) 
+ *       && (((tmp) = (traverse)) || 1)
+ *
+ * Why? Because if traverse returns NULL (end of walk), the loop condition
+ * becomes false and skips the last node's body. That's wrong.
+ *
+ * The "|| 1" forces it to be true no matter what. So the last node runs.
+ *
+ *
+ * 2. The _entry trick
+ * -------------------------------------------------
+ * Look at this:
+ *    (cur) = (type *)(start);               // step 1 - lie
+ *    ((cur) != NULL) 
+ *       && ((cur) = container_of(cur));     // step 2 - truth
+ *
+ * Step 1: cur pretends to be a container pointer but actually holds a node pointer.
+ * Step 2: If cur isn't NULL, turn it into a real container pointer.
+ *
+ * We never use cur between step 1 and step 2. Only check if it's NULL.
+ * Safe.
+ *
+ *
+ * 3. The _entry_safe combo
+ * -------------------------------------------------
+ *    ((cur) != NULL)
+ *       && (((cur) = container_of((void *)(cur), type, member)) || 1)
+ *       && (((tmp) = (type *)(traverse)) || 1);
+ *
+ * Both need || 1. Here's why:
+ *
+ * container_of can return NULL. How? If the node pointer you pass in equals
+ * the offset of 'member' inside the struct. Example: if 'member' is at offset 8
+ * and someone hands you (void *)8, container_of subtracts 8 and gives you NULL.
+ *
+ * Is that likely? No. But the compiler doesn't know that. It sees a possible NULL.
+ * Without || 1, the whole condition could become false and skip the loop body.
+ *
+ * traverse might return NULL at the end of walk. Same problem. Same fix.
+ *
+ * So we slap || 1 on both. The && chain keeps short-circuit working.
+ * If cur is NULL, we bail early. Otherwise, both conversions run and we loop.
+ *
+ *
+ * Type checks (you won't shoot yourself in the foot)
+ * -------------------------------------------------
+ *
+ * The caller puts their own type checks in __VA_ARGS__.
+ * They sit at the start of the for-loop init.
+ *
+ * This makes sure:
+ *    - Your iterator variable has the right type
+ *    - traverse returns the right node type
+ *    - _entry macros match container type
+ *
+ * The tree wrappers add these checks. You don't call these macros directly.
+ * That's the deal.
+ */
+
+#include <stddef.h>
+
+#define __bst_foreach(node, subroot, start, traverse, ...)              \
+   for (                                                                \
+      __VA_ARGS__, /* caller injected typechecks */                     \
+      typecheck(typeof(*(node)), *(start)),                             \
+      typecheck(typeof(*(node)), *(traverse)),                          \
+      (node) = (start);                                                 \
+      (node) != NULL;                                                   \
+      (node) = (traverse)                                               \
+   )
+
+#define __bst_foreach_safe(node, tmp, subroot, start, traverse, ...)    \
+   for (                                                                \
+      __VA_ARGS__, /* caller injected typechecks */                     \
+      typecheck(typeof(*(node)), *(tmp)),                               \
+      typecheck(typeof(*(node)), *(start)),                             \
+      typecheck(typeof(*(node)), *(traverse)),                          \
+      (node) = (start);                                                 \
+      ((node) != NULL)                                                  \
+         && (((tmp) = (traverse)) || 1);                                \
+      (node) = (tmp)                                                    \
+   )
+
+#define __bst_foreach_entry(cur, subroot, type, member, start, traverse, ...)                   \
+   for (                                                                                        \
+      __VA_ARGS__, /* caller injected typechecks */                                             \
+      typecheck(type, *(cur)),                                                                  \
+      typecheck(typeof_member(type, member), *(start)),                                         \
+      typecheck(typeof_member(type, member), *(traverse)),                                      \
+      (cur) = (type *)(start);                                                                  \
+      ((cur) != NULL)                                                                           \
+         && (((cur) = container_of((typeof_member(type, member) *)(cur), type, member)) || 1);  \
+      (cur) = (type *)(traverse)                                                                \
+   )
+
+#define __bst_foreach_entry_safe(cur, tmp, subroot, type, member, start, traverse, ...)         \
+   for (                                                                                        \
+      __VA_ARGS__, /* caller injected typechecks */                                             \
+      typecheck(type, *(cur)),                                                                  \
+      typecheck(type, *(tmp)),                                                                  \
+      typecheck(typeof_member(type, member), *(start)),                                         \
+      typecheck(typeof_member(type, member), *(traverse)),                                      \
+      (cur) = (type *)(start);                                                                  \
+      ((cur) != NULL)                                                                           \
+         && (((cur) = container_of((typeof_member(type, member) *)(cur), type, member)) || 1)   \
+         && (((tmp) = (type *)(traverse)) || 1);                                                \
+      (cur) = (tmp)                                                                             \
+   )
+
+
+
+
+/* HUZLIB_AVL_TREE_IMPL required HUZLIB_BST_IMPL */
+#ifdef HUZLIB_AVL_TREE_IMPL
+#define HUZLIB_BST_IMPL
+#endif /* HUZLIB_AVL_TREE_IMPL */
+
+
+#ifdef HUZLIB_BST_IMPL
+
+/*
+ * So I plan to have 3 BSTs in this library:
+ *
+ *    1. AVL tree
+ *    2. Red-Black tree
+ *    3. Splay tree
+ *
+ * All 3 share the same traversal logic. The only difference is the node type.
+ *
+ * I don't want to write the same traversal code 3 times. That's stupid.
+ *
+ * So I look at linux/min_heap.h for inspiration. (I know! sounds crazy but hear me out)
+ *
+ * min_heap.h does this fake generic trick:
+ *    - Internal type = void / char
+ *    - Capacity = 0 / [] (flexible array)
+ *    - Write functions around the fake type
+ *    - Use macros to cast real type <-> internal type
+ *
+ * One set of functions. Every type of min_heap. ONE RING TO RULE THEM ALL.
+ *
+ * I steal this idea.
+ *
+ * I create an internal type called 'struct bst_node'.
+ * I write all traversal functions around this type.
+ * AVL/RB/splay just wrap these functions internally.
+ *
+ * But there's a problem...
+ *
+ * The parent pointer.
+ *
+ * In a simple linked list, parent is just a pointer. Simple.
+ * But AVL packs balance factor into the low bits of parent pointer.
+ * Red-Black packs the color bit.
+ * Splay does its own weird shit.
+ *
+ * I can't just read parent directly. Each tree needs its own tiny function
+ * to unpack the real parent from the packed value.
+ *
+ * Here's the fix:
+ *
+ * bst_node stores parent as a raw uintptr_t at offset 0.
+ * This matches the layout of avl_node, rb_node, splay_node exactly.
+ *
+ * The traversal code gets a small __xxx_parent callback that knows how to
+ * unpack parent for that specific tree type.
+ *
+ * These callbacks are force_inlined and always called with a concrete function.
+ * The compiler folds them away. Zero overhead.
+ *
+ * Converting between avl_node/rb_node/splay_node and bst_node?
+ * container_of on the shared first member. Safe. No strict aliasing bugs.
+ */
+
+#include <stdint.h>
+#include <stdbool.h>
+
+struct bst_node
+{
+   uintptr_t __packed_parent;
+   struct bst_node *left, *right;
+};
+
+struct bst_node_linked
+{
+   struct bst_node node;
+   struct bst_node_linked *prev, *next;
+};
+
+
+
+#ifdef NDEBUG
+   #define HUZLIB_BST_INTERNAL static __huzlib_inline__
+#else
+   #define HUZLIB_BST_INTERNAL static inline
+#endif
+
+
+/* ------------------------------------------------------------- */
+/* --------------------- helper functions  --------------------- */
+/* ------------------------------------------------------------- */
+
+/*
+ * __huzlib_bst_parent_ptr(root_ptr, node, parent, isleft)
+ * -------------------------------------------------------
+ * Returns the address of the pointer in 'parent' that points to 'node',
+ * i.e. either &parent->left, &parent->right, or root_link if node is root.
+ *
+ * @root_link: the tree root's placeholder, not NULL
+ * @node:      the node to find the parent pointer for, not NULL
+ * @parent:    node->parent, may be NULL if node is the root
+ * @isleft:    set true if node is parent's left child, false if right.
+ *             value irrelavant if node is the root (parent == NULL).
+ *
+ * Return: address of the parent's child pointer that references node.
+ */
+HUZLIB_BST_INTERNAL struct bst_node **__huzlib_bst_parent_ptr(struct bst_node **restrict root_link, struct bst_node *restrict node, struct bst_node *restrict parent, bool *restrict isleft)
+{
+   __huzlib_assert(root_link && node && isleft);
+
+   if (!parent)
+   {
+      /* isleft's value doesn't matter when node is root */
+      return root_link;
+   }
+   else if (parent->left == node)
+   {
+      *isleft = true;
+      return &parent->left;
+   }
+   else /* (parent->right == node) */
+   {
+      *isleft = false;
+      return &parent->right;
+   }
+}
+
+/*
+ * __huzlib_bst_delink_node(child, parent, link, set_parent)
+ * ---------------------------------------------------------
+ * Replaces node 'n' in the tree by splicing 'child' into its position via
+ * 'link', the parent's pointer that previously pointed to 'n'.
+ *
+ *    p                           p
+ *     \                           \
+ *      n          ==>       n     (c)
+ *     / \                  /
+ *   (o) (c)              (o)
+ *
+ * @child:      the node to splice in, may be NULL
+ * @parent:     the parent of the node being removed, may be NULL
+ * @link:       parent's internal pointer to delinking node, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Other child 'o' (if it exists) is left dangling.
+ * Relinking 'o' is the caller's responsibility.
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_delink_node(struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(link && ((!parent) || (parent->left == *link) || (parent->right == *link)));
+   __huzlib_assert(((*link)->left == child) || ((*link)->right == child));
+   *link = child;
+   if (child)
+      set_parent(child, parent);
+}
+
+/*
+ * __huzlib_bst_replace_node(old, new, link)
+ * -----------------------------------------
+ * Attaches 'new' to where 'old' was via 'link', the parent's pointer
+ *
+ *     |                              |
+ *     o                              n
+ *    / \                            / \
+ *  (u) (v)     n         ==>      (x) (y)      o
+ *             / \                             / \
+ *           (x) (y)                         (u) (v)
+ *
+ * @old:  the node to be replaced, not NULL
+ * @new:  node to replace with, not NULL
+ * @link: parent's internal pointer to linking node, not NULL
+ *
+ * NOTE:
+ * Will replace entire subtree on 'old' with subtree of 'new'
+ * Therefore, children 'u' & 'v' (if exists) are left dangling.
+ * Relinking is the caller's responsibility.
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_replace_node(struct bst_node *restrict old, struct bst_node *restrict new, struct bst_node **restrict link)
+{
+   __huzlib_assert(old && new && link && (*link == old) && augment_copy);
+   *link = new;
+   new->__packed_parent = old->__packed_parent;
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* --------------------- linked functions  --------------------- */
+/* ------------------------------------------------------------- */
+
+/*
+ * __huzlib_bst_add_linked(new, prev, next)
+ * ----------------------------------------
+ * Inserts 'new' between 'prev' and 'next' in a doubly-linked list.
+ *
+ *      prev         next                 prev         new         next
+ *       o --------- o                     o --------- o --------- o
+ *
+ * @new:   node to insert, not NULL
+ * @prev:  predecessor node, may be NULL (insert at head)
+ * @next:  successor node, may be NULL (insert at tail)
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_add_linked(struct bst_node_linked *restrict new, struct bst_node_linked *restrict prev, struct bst_node_linked *restrict next)
+{
+   __huzlib_assert(new);
+
+   if (__huzlib_likely__(prev))
+      prev->next = new;
+
+   if (__huzlib_likely__(next))
+      next->prev = new;
+
+   new->prev = prev;
+   new->next = next;
+}
+
+/*
+ * __huzlib_bst_rm_linked(prev, next)
+ * ----------------------------------
+ * Removes the node between 'prev' and 'next' by linking them directly.
+ *
+ *      prev         node         next                 prev         next
+ *       o --------- o --------- o         ==>          o --------- o
+ *
+ * @prev:  predecessor of the node being removed, may be NULL
+ * @next:  successor of the node being removed, may be NULL
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rm_linked(struct bst_node_linked *restrict prev, struct bst_node_linked *restrict next)
+{
+   if (__huzlib_likely__(prev))
+      prev->next = next;
+
+   if (__huzlib_likely__(next))
+      next->prev = prev;
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* --------------------- rotate functions  --------------------- */
+/* ------------------------------------------------------------- */
+
+/*
+ * __huzlib_bst_rotate_left(node, child, link, set_parent)
+ * -------------------------------------------------------
+ * Standard BST left rotation on 'node'
+ *
+ *      n                         c
+ *     / \                       / \
+ *   (x)  c         ==>         n  (z)
+ *       / \                   / \
+ *     (y) (z)               (x) (y)
+ *
+ * @node:       the node rotating on, not NULL
+ * @child:      node's right child, not NULL
+ * @link:       node->parent's internal pointer to node, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node' and 'child'.
+ * Caller must update them after rotation.
+ *   eg: __rb_set_parent_color(node, child, RB_BLACK);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && link && (*link == node) && (node->right == child));
+
+   if (child->left)
+      set_parent(child->left, node);
+
+   node->right = child->left;
+   child->left = node;
+
+   *link = child;
+}
+
+/*
+ * __huzlib_bst_rotate_right(node, child, link, set_parent)
+ * --------------------------------------------------------
+ * Standard BST right rotation on 'node'
+ *
+ *        n                      c
+ *       / \                    / \
+ *      c  (x)      ==>       (z)  n
+ *     / \                        / \
+ *   (z) (y)                    (y) (x)
+ *
+ * @node:       the node rotating on, not NULL
+ * @child:      node's left child, not NULL
+ * @link:       node->parent's internal pointer to node, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node' and 'child'.
+ * Caller must update them after rotation.
+ *    eg: __rb_set_parent_color(node, child, RB_RED);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && link && (*link == node) && (node->left == child));
+
+   if (child->right)
+      set_parent(child->right, node);
+
+   node->left = child->right;
+   child->right = node;
+
+   *link = child;
+}
+
+/*
+ * __huzlib_bst_rotate_left_left(parent, node, child, link, set_parent)
+ * ---------------------------------------------------------------------
+ * Double left rotation. parent moves down-right onto node, then node
+ * moves down-right onto child. child becomes the new subtree root.
+ *
+ *     p                             n                             c
+ *    / \                          /   \                          / \
+ *  (w)  n                       p       c                       n  (z)
+ *      / \          ==>        / \     / \        ==>          / \
+ *    (x)  c                  (w) (x) (y) (z)                  p  (y)
+ *        / \                                                 / \
+ *      (y) (z)                                             (w) (x)
+ *
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's right child, not NULL
+ * @child:      node's right child, becomes the new subtree root, not NULL
+ * @link:       parent->parent's internal pointer to parent, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
+ * Caller must update them after rotation.
+ *    eg: __splay_set_parent(node, child);
+ *        __splay_set_parent(parent, node);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->right == node));
+
+   if (node->left) /* (x) */
+      set_parent(node->left, parent);
+
+   if (child->left) /* (y) */
+      set_parent(child->left, node);
+
+   parent->right = node->left;
+   node->right = child->left;
+
+   node->left = parent;
+   child->left = node;
+
+   *link = child;
+}
+
+/*
+ * __huzlib_bst_rotate_right_right(parent, node, child, link, set_parent)
+ * -----------------------------------------------------------------------
+ * Double right rotation. parent moves down-left onto node, then node
+ * moves down-left onto child. child becomes the new subtree root.
+ *
+ *         p                         n                         c
+ *        / \                      /   \                      / \
+ *       n  (w)                  c       p                  (z)  n
+ *      / \          ==>        / \     / \        ==>          / \
+ *     c  (x)                 (z) (y) (x) (w)                 (y)  p
+ *    / \                                                         / \
+ *  (z) (y)                                                     (x) (w)
+ *
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's left child, not NULL
+ * @child:      node's left child, becomes the new subtree root, not NULL
+ * @link:       parent->parent's internal pointer to parent, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
+ * Caller must update them after rotation.
+ *    eg: __splay_set_parent(node, child);
+ *        __splay_set_parent(parent, node);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->left == node));
+
+   if (node->right) /* (x) */
+      set_parent(node->right, parent);
+
+   if (child->right) /* (y) */
+      set_parent(child->right, node);
+
+   parent->left = node->right;
+   node->left = child->right;
+
+   node->right = parent;
+   child->right = node;
+
+   *link = child;
+}
+
+/*
+ * __huzlib_bst_rotate_left_right(parent, node, child, link, set_parent)
+ * ----------------------------------------------------------------------
+ * Left-right double rotation. node rotates left, lifting child up between
+ * node and parent, then parent rotates right, making child the new subtree
+ * root with node and parent as its children.
+ *
+ *        p                         p                        c
+ *       / \                       / \                     /   \
+ *      n  (w)                    c  (w)                 n       p
+ *     / \          ==>          / \          ==>       / \     / \
+ *   (x)  c                     n  (z)                (x) (y) (z) (w)
+ *       / \                   / \
+ *     (y) (z)               (x) (y)
+ *
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's left child, not NULL
+ * @child:      node's right child, becomes the new subtree root, not NULL
+ * @link:       parent->parent's internal pointer to parent, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
+ * Caller must update them after rotation.
+ *    eg: __avl_set_parent_balance(node, child, x);
+ *        __avl_set_parent_balance(parent, child, y);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->left == node));
+
+   if (child->left) /* (y) */
+      set_parent(child->left, node);
+
+   if (child->right) /* (z) */
+      set_parent(child->right, parent);
+
+   node->right = child->left;
+   parent->left = child->right;
+
+   child->left = node;
+   child->right = parent;
+
+   *link = child;
+}
+
+/*
+ * __huzlib_bst_rotate_right_left(parent, node, child, link, set_parent)
+ * ----------------------------------------------------------------------
+ * Right-left double rotation. node rotates right, lifting child up between
+ * node and parent, then parent rotates left, making child the new subtree
+ * root with parent and node as its children.
+ *
+ *      p                       p                            c
+ *     / \                     / \                         /   \
+ *   (w)  n                  (w)  c                      p       n
+ *       / \        ==>          / \          ==>       / \     / \
+ *      c  (x)                 (z)  n                 (w) (z) (y) (x)
+ *     / \                         / \
+ *   (z) (y)                     (y) (x)
+ *
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's right child, not NULL
+ * @child:      node's left child, becomes the new subtree root, not NULL
+ * @link:       parent->parent's internal pointer to parent, not NULL
+ * @set_parent: parent setter
+ *
+ * NOTE:
+ * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
+ * Caller must update them after rotation.
+ *    eg: __avl_set_parent_balance(node, child, x);
+ *        __avl_set_parent_balance(parent, child, y);
+ */
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
+{
+   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->right == node));
+
+   if (child->right) /* (y) */
+      set_parent(child->right, node);
+
+   if (child->left) /* (z) */
+      set_parent(child->left, parent);
+
+   node->left = child->right;
+   parent->right = child->left;
+
+   child->right = node;
+   child->left = parent;
+
+   *link = child;
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* --------------- full-tree / sub-tree queries  --------------- */
+/* ------------------------------------------------------------- */
+
+/*
+ * __huzlib_bst_first(node)
+ * ------------------------
+ * first node in in-order traversal with subtree boundary.
+ *
+ * @node: sub-tree root node (root->node for full-tree)
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_first(const struct bst_node *restrict node)
+{
+   __huzlib_assert(node);
+   while (node->left)
+      node = node->left;
+   return node;
+}
+
+/*
+ * __huzlib_bst_last(node)
+ * -----------------------
+ * last node in in-order traversal with subtree boundary.
+ *
+ * @node: sub-tree root node (root->node for full-tree)
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_last(const struct bst_node *restrict node)
+{
+   __huzlib_assert(node);
+   while (node->right)
+      node = node->right;
+   return node;
+}
+
+/*
+ * __huzlib_bst_postorder_first(node)
+ * ----------------------------------
+ * first node in post-order traversal with subtree boundary.
+ *
+ * @node: sub-tree root node (root->node for full-tree)
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_first(const struct bst_node *restrict node)
+{
+   __huzlib_assert(node);
+
+   node = __huzlib_bst_first(node);
+   while (true)
+   {
+      if (node->left)
+         node = node->left;
+
+      else if (node->right)
+         node = node->right;
+
+      else
+         return node;
+   }
+}
+
+
+/* -------------------------------------------------------------- */
+/* -------------- full-tree / sub-tree traversals  -------------- */
+/* -------------------------------------------------------------- */
+
+/*
+ * __huzlib_bst_next(subroot_parent, node, get_parent)
+ * ---------------------------------------------------
+ * In-order successor with subtree boundary.
+ *
+ * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
+ * @node:           current node
+ * @get_parent:     parent getter
+ *
+ * Return: next node in in-order, or NULL if none
+ *
+ * NOTE:
+ * The compiler folds bst_parent(subroot) → subroot when subroot is a dereferenced
+ * pointer, making this zero-cost for both full-tree & sub-tree use cases.
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+{
+   __huzlib_assert(node && get_parent);
+
+   if (node->right)
+   {
+      node = node->right;
+      while (node->left)
+         node = node->left;
+      return node;
+   }
+   else
+   {
+      const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+      while (parent != subroot_parent && node == parent->right)
+      {
+         node = parent;
+         parent = get_parent(parent->__packed_parent);
+      }
+      return (__huzlib_unlikely__(parent == subroot_parent)) ? NULL : parent;
+   }
+}
+
+/*
+ * __huzlib_bst_prev(subroot_parent, node, get_parent)
+ * ---------------------------------------------------
+ * In-order predecessor with subtree boundary.
+ *
+ * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
+ * @node:           current node
+ * @get_parent:     parent getter
+ *
+ * Return: prev node in in-order, or NULL if none
+ *
+ * NOTE:
+ * The compiler folds bst_parent(subroot) → subroot when subroot is a dereferenced
+ * pointer, making this zero-cost for both full-tree & sub-tree use cases.
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_prev(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+{
+   __huzlib_assert(node && get_parent);
+
+   if (node->left)
+   {
+      node = node->left;
+      while (node->right)
+         node = node->right;
+      return node;
+   }
+   else
+   {
+      const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+      while (parent != subroot_parent && node == parent->left)
+      {
+         node = parent;
+         parent = get_parent(parent->__packed_parent);
+      }
+      return (__huzlib_unlikely__(parent == subroot_parent)) ? NULL : parent;
+   }
+}
+
+/*
+ * __huzlib_bst_preorder_next(subroot_parent, node, get_parent)
+ * ------------------------------------------------------------
+ * Pre-order successor with subtree boundary.
+ *
+ * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
+ * @node:           current node
+ * @get_parent:     parent getter
+ *
+ * Return: next node in pre-order, or NULL if none
+ *
+ * Pre-order traversal: node → left subtree → right subtree
+ *
+ * Cases:
+ *   - Has left child  → return left child
+ *   - Has right child → return right child
+ *   - Leaf            → walk up until finding an ancestor that is a left child
+ *                       and has a right child, then return that right child
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_preorder_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+{
+   __huzlib_assert(node && get_parent);
+
+   if (node->left)
+      return node->left;
+
+   else if (node->right)
+      return node->right;
+
+   else
+      while (true)
+      {
+         const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+
+         if (__huzlib_unlikely__(parent == subroot_parent))
+            return NULL;
+
+         else if (node == parent->left && parent->right)
+            return parent->right;
+
+         else
+            node = parent;
+      }
+}
+
+/*
+ * __huzlib_bst_postorder_next(subroot_parent, node, get_parent)
+ * -------------------------------------------------------------
+ * Post-order successor with subtree boundary.
+ *
+ * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
+ * @node:           current node
+ * @get_parent:     parent getter
+ *
+ * Return: next node in post-order, or NULL if none
+ *
+ * Post-order traversal: left subtree → right subtree → node
+ *
+ * Cases:
+ *   - Current node is left child and parent has right child
+ *       → first post-order node in parent's right subtree
+ *   - Otherwise → parent
+ *
+ */
+HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+{
+   __huzlib_assert(node && get_parent);
+   const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+
+   if (__huzlib_unlikely__(parent == subroot_parent))
+      return NULL;
+
+   else if (node == parent->left && parent->right)
+      return __huzlib_bst_postorder_first(parent->right);
+
+   else
+      return parent;
+}
+
+
+
+
+#define bst_node_cast(node, parent_member)         container_of(&(node)->parent_member, struct bst_node, __packed_parent)
+#define bst_node_recast(node, type, parent_member) container_of(&(node)->__packed_parent, type, parent_member)
+
+#define bst_node_linked_cast(_node, parent_member)          container_of(bst_node_cast(&(_node)->node, parent_member), struct bst_node_linked, node)
+#define bst_node_linked_recast(_node, type, parent_member)  container_of(bst_node_recast(&(_node)->node, typeof_member(type, node), parent_member), type, node)
+
+
+#define __bst_parent_ptr(root_link, node, parent, isleft, __parent_member) \
+   ((typeof(*(node)) **)__huzlib_bst_parent_ptr(                           \
+      (struct bst_node **)(root_link),                                     \
+      bst_node_cast(node, __parent_member),                                \
+      bst_node_cast(parent, __parent_member),                              \
+      isleft                                                               \
+   ))
+
+#define __bst_delink_node(child, parent, link, set_parent, __parent_member)   \
+   __huzlib_bst_delink_node(                                                  \
+      bst_node_cast(child, __parent_member),                                  \
+      bst_node_cast(parent, __parent_member),                                 \
+      (struct bst_node **)(link),                                             \
+      set_parent                                                              \
+   )
+
+#define __bst_replace_node(old, new, link, __parent_member) \
+   __huzlib_bst_replace_node(                               \
+      bst_node_cast(old, __parent_member),                  \
+      bst_node_cast(new, __parent_member),                  \
+      (struct bst_node **)(link)                            \
+   )
+
+#define __bst_add_linked(new, prev, next, __parent_member)  \
+   __huzlib_bst_add_linked(                                 \
+      bst_node_linked_cast(new, __parent_member),           \
+      bst_node_linked_cast(prev, __parent_member),          \
+      bst_node_linked_cast(next, __parent_member)           \
+   )
+
+#define __bst_rm_linked(prev, next, __parent_member)        \
+   __huzlib_bst_rm_linked(                                  \
+      bst_node_linked_cast(prev, __parent_member),          \
+      bst_node_linked_cast(next, __parent_member)           \
+   )
+
+#define __bst_rotate_left(node, child, link, set_parent, __parent_member)                 \
+   __huzlib_bst_rotate_left(                                                              \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+#define __bst_rotate_right(node, child, link, set_parent, __parent_member)                \
+   __huzlib_bst_rotate_right(                                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+#define __bst_rotate_left_left(parent, node, child, link, set_parent, __parent_member)    \
+   __huzlib_bst_rotate_left_left(                                                         \
+      bst_node_cast(parent, __parent_member),                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+#define __bst_rotate_right_right(parent, node, child, link, set_parent, __parent_member)  \
+   __huzlib_bst_rotate_right_right(                                                       \
+      bst_node_cast(parent, __parent_member),                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+
+#define __bst_rotate_left_right(parent, node, child, link, set_parent, __parent_member)   \
+   __huzlib_bst_rotate_left_right(                                                        \
+      bst_node_cast(parent, __parent_member),                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+#define __bst_rotate_right_left(parent, node, child, link, set_parent, __parent_member)   \
+   __huzlib_bst_rotate_right_left(                                                        \
+      bst_node_cast(parent, __parent_member),                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
+   )
+
+#define __bst_first(node, __parent_member)            \
+   bst_node_recast(                                   \
+      __huzlib_bst_first(                             \
+         bst_node_cast(node, __parent_member)         \
+      ),                                              \
+      typeof(*(node)),                                \
+      __parent_member                                 \
+   )
+
+#define __bst_last(node, __parent_member)             \
+   bst_node_recast(                                   \
+      __huzlib_bst_last(                              \
+         bst_node_cast(node, __parent_member)         \
+      ),                                              \
+      typeof(*(node)),                                \
+      __parent_member                                 \
+   )
+
+#define __bst_postorder_first(node, __parent_member)  \
+   bst_node_recast(                                   \
+      __huzlib_bst_postorder_first(                   \
+         bst_node_cast(node, __parent_member)         \
+      ),                                              \
+      typeof(*(node)),                                \
+      __parent_member                                 \
+   )
+
+#define __bst_next(subroot_parent, node, get_parent, __parent_member)            \
+   bst_node_recast(                                                              \
+      __huzlib_bst_next(                                                         \
+         bst_node_cast((typeof((node)))(subroot_parent), __parent_member),       \
+         bst_node_cast(node, __parent_member),                                   \
+         get_parent                                                              \
+      ),                                                                         \
+      typeof(*(node)),                                                           \
+      __parent_member                                                            \
+   )
+
+#define __bst_prev(subroot_parent, node, get_parent, __parent_member)            \
+   bst_node_recast(                                                              \
+      __huzlib_bst_prev(                                                         \
+         bst_node_cast((typeof((node)))(subroot_parent), __parent_member),       \
+         bst_node_cast(node, __parent_member),                                   \
+         get_parent                                                              \
+      ),                                                                         \
+      typeof(*(node)),                                                           \
+      __parent_member                                                            \
+   )
+
+#define __bst_preorder_next(subroot_parent, node, get_parent, __parent_member)   \
+   bst_node_recast(                                                              \
+      __huzlib_bst_preorder_next(                                                \
+         bst_node_cast((typeof((node)))(subroot_parent), __parent_member),       \
+         bst_node_cast(node, __parent_member),                                   \
+         get_parent                                                              \
+      ),                                                                         \
+      typeof(*(node)),                                                           \
+      __parent_member                                                            \
+   )
+
+#define __bst_postorder_next(subroot_parent, node, get_parent, __parent_member)  \
+   bst_node_recast(                                                              \
+      __huzlib_bst_postorder_next(                                               \
+         bst_node_cast((typeof((node)))(subroot_parent), __parent_member),       \
+         bst_node_cast(node, __parent_member),                                   \
+         get_parent                                                              \
+      ),                                                                         \
+      typeof(*(node)),                                                           \
+      __parent_member                                                            \
+   )
+
+
+#endif /* HUZLIB_BST_IMPL */
+#endif /* HUZLIB_BST_H */
+
+
 #endif /* HUZLIB_AVL_TREE_INCLUDES */
 
 
@@ -927,9 +1982,9 @@ extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_postorder_next(co
  * -----------------------------
  * Returns the parent pointer stored in the packed field.
  */
-HUZLIB_AVL_TREE_INTERNAL __huzlib_const__ struct avl_node *__avl_parent(const uintptr_t parent_vbalance) __huzlib_unsequenced__
+HUZLIB_AVL_TREE_INTERNAL __huzlib_const__ void *__avl_parent(const uintptr_t parent_vbalance) __huzlib_unsequenced__
 {
-   return (struct avl_node *)(parent_vbalance & ~AVL_BALANCE_MASK);
+   return (void *)(parent_vbalance & ~AVL_BALANCE_MASK);
 }
 
 /*
@@ -971,6 +2026,14 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_set_parent(struct avl_node *restrict node, c
    node->__parent_vbalance = ((uintptr_t)parent) | (node->__parent_vbalance & AVL_BALANCE_MASK);
 }
 
+HUZLIB_AVL_TREE_INTERNAL void __avl_set_parent_bst(struct bst_node *restrict node, const struct bst_node *restrict parent)
+{
+   __avl_set_parent(
+      bst_node_recast(node, struct avl_node, __parent_vbalance),
+      bst_node_recast(parent, struct avl_node, __parent_vbalance)
+   );
+}
+
 /*
  * __avl_parent_ptr(root, node, parent, isleft)
  * ---------------------------------------------
@@ -987,23 +2050,8 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_set_parent(struct avl_node *restrict node, c
  */
 HUZLIB_AVL_TREE_INTERNAL struct avl_node **__avl_parent_ptr(struct avl_root *restrict root, struct avl_node *restrict node, struct avl_node *restrict parent, bool *restrict isleft)
 {
-   __huzlib_assert(root && node && isleft && (avl_parent(node) == parent));
-
-   if (!parent)
-   {
-      /* isleft retains it's value when node is root */
-      return &root->node;
-   }
-   else if (parent->left == node)
-   {
-      *isleft = true;
-      return &parent->left;
-   }
-   else /* (parent->right == node) */
-   {
-      *isleft = false;
-      return &parent->right;
-   }
+   __huzlib_assert(root && (avl_parent(node) == parent));
+   return __bst_parent_ptr(&root->node, node, parent, isleft, __parent_vbalance);
 }
 
 
@@ -1029,10 +2077,7 @@ HUZLIB_AVL_TREE_INTERNAL struct avl_node **__avl_parent_ptr(struct avl_root *res
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_delink_node(struct avl_node *restrict child, struct avl_node *restrict parent, struct avl_node **restrict link)
 {
-   __huzlib_assert(link && (avl_parent(*link)) == parent && (((*link)->left == child) || ((*link)->right == child)));
-   *link = child;
-   if (child)
-      __avl_set_parent(child, parent);
+   __bst_delink_node(child, parent, link, __avl_set_parent_bst, __parent_vbalance);
 }
 
 /*
@@ -1059,9 +2104,8 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_delink_node(struct avl_node *restrict child,
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_replace_node(struct avl_node *restrict old, struct avl_node *restrict new, struct avl_node **restrict link, void (*augment_copy)(struct avl_node *, struct avl_node *))
 {
-   __huzlib_assert(old && new && link && (*link == old) && augment_copy);
-   *link = new;
-   new->__parent_vbalance = old->__parent_vbalance;
+   __huzlib_assert(augment_copy);
+   __bst_replace_node(old, new, link, __parent_vbalance);
    augment_copy(old, new);
 }
 
@@ -1080,16 +2124,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_replace_node(struct avl_node *restrict old, 
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_add_linked(struct avl_node_linked *restrict new, struct avl_node_linked *restrict prev, struct avl_node_linked *restrict next)
 {
-   __huzlib_assert(new);
-
-   if (__huzlib_likely__(prev))
-      prev->next = new;
-
-   if (__huzlib_likely__(next))
-      next->prev = new;
-
-   new->prev = prev;
-   new->next = next;
+   __bst_add_linked(new, prev, next, __parent_vbalance);
 }
 
 /*
@@ -1105,11 +2140,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_add_linked(struct avl_node_linked *restrict 
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_rm_linked(struct avl_node_linked *restrict prev, struct avl_node_linked *restrict next)
 {
-   if (__huzlib_likely__(prev))
-      prev->next = next;
-
-   if (__huzlib_likely__(next))
-      next->prev = prev;
+   __bst_rm_linked(prev, next, __parent_vbalance);
 }
 
 
@@ -1135,15 +2166,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_rm_linked(struct avl_node_linked *restrict p
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_left(struct avl_node *restrict node, struct avl_node *restrict child, struct avl_node **restrict link)
 {
-   __huzlib_assert(node && child && link && (*link == node) && (node->right == child));
-
-   if (child->left)
-      __avl_set_parent(child->left, node);
-
-   node->right = child->left;
-   child->left = node;
-
-   *link = child;
+   __bst_rotate_left(node, child, link, __avl_set_parent_bst, __parent_vbalance);
 }
 
 /*
@@ -1168,15 +2191,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_left(struct avl_node *restrict node, 
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_right(struct avl_node *restrict node, struct avl_node *restrict child, struct avl_node **restrict link)
 {
-   __huzlib_assert(node && child && link && (*link == node) && (node->left == child));
-
-   if (child->right)
-      __avl_set_parent(child->right, node);
-
-   node->left = child->right;
-   child->right = node;
-
-   *link = child;
+   __bst_rotate_right(node, child, link, __avl_set_parent_bst, __parent_vbalance);
 }
 
 /*
@@ -1205,21 +2220,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_right(struct avl_node *restrict node,
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_left_right(struct avl_node *restrict node, struct avl_node *restrict child, struct avl_node *restrict parent, struct avl_node **restrict link)
 {
-   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->left == node));
-
-   if (child->left) /* (y) */
-      __avl_set_parent(child->left, node);
-
-   if (child->right) /* (z) */
-      __avl_set_parent(child->right, parent);
-
-   node->right = child->left;
-   parent->left = child->right;
-
-   child->left = node;
-   child->right = parent;
-
-   *link = child;
+   __bst_rotate_left_right(parent, node, child, link, __avl_set_parent_bst, __parent_vbalance);
 }
 
 /*
@@ -1248,21 +2249,7 @@ HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_left_right(struct avl_node *restrict 
  */
 HUZLIB_AVL_TREE_INTERNAL void __avl_rotate_right_left(struct avl_node *restrict node, struct avl_node *restrict child, struct avl_node *restrict parent, struct avl_node **restrict link)
 {
-   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->right == node));
-
-   if (child->right) /* (y) */
-      __avl_set_parent(child->right, node);
-
-   if (child->left) /* (z) */
-      __avl_set_parent(child->left, parent);
-
-   node->left = child->right;
-   parent->right = child->left;
-
-   child->right = node;
-   child->left = parent;
-
-   *link = child;
+   __bst_rotate_right_left(parent, node, child, link, __avl_set_parent_bst, __parent_vbalance);
 }
 
 
@@ -1855,32 +2842,10 @@ const struct avl_augment_callbacks __avl_dummy_augment = {
  * @node:           current node
  *
  * Return: next node in in-order, or NULL if none
- *
- * NOTE:
- * The compiler folds avl_parent(subroot) → subroot when subroot is a dereferenced
- * pointer, making this zero-cost for both use cases.
  */
 HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_next(const struct avl_node *restrict subroot_parent, const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-
-   if (node->right)
-   {
-      node = node->right;
-      while (node->left)
-         node = node->left;
-      return (struct avl_node *)node;
-   }
-   else
-   {
-      struct avl_node *restrict parent = avl_parent(node);
-      while (parent != subroot_parent && node == parent->right)
-      {
-         node = parent;
-         parent = avl_parent(parent);
-      }
-      return parent;
-   }
+   return (struct avl_node *)__bst_next(subroot_parent, node, __avl_parent, __parent_vbalance);
 }
 
 /*
@@ -1892,32 +2857,10 @@ HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_next(const struct avl_node *rest
  * @node:           current node
  *
  * Return: prev node in in-order, or NULL if none
- *
- * NOTE:
- * The compiler folds avl_parent(subroot) → subroot when subroot is a dereferenced
- * pointer, making this zero-cost for both use cases.
  */
 HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_prev(const struct avl_node *restrict subroot_parent, const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-
-   if (node->left)
-   {
-      node = node->left;
-      while (node->right)
-         node = node->right;
-      return (struct avl_node *)node;
-   }
-   else
-   {
-      struct avl_node *restrict parent = avl_parent(node);
-      while (parent != subroot_parent && node == parent->left)
-      {
-         node = parent;
-         parent = avl_parent(parent);
-      }
-      return parent;
-   }
+   return (struct avl_node *)__bst_prev(subroot_parent, node, __avl_parent, __parent_vbalance);
 }
 
 /*
@@ -1929,38 +2872,10 @@ HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_prev(const struct avl_node *rest
  * @node:           current node
  *
  * Return: next node in pre-order, or NULL if none
- *
- * Pre-order traversal: node → left subtree → right subtree
- *
- * Cases:
- *   - Has left child  → return left child
- *   - Has right child → return right child
- *   - Leaf            → walk up until finding an ancestor that is a left child
- *                       and has a right child, then return that right child
  */
 HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_preorder_next(const struct avl_node *restrict subroot_parent, const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-
-   if (node->left)
-      return (struct avl_node *)node->left;
-
-   else if (node->right)
-      return (struct avl_node *)node->right;
-
-   else
-      while (true)
-      {
-         struct avl_node *restrict parent = avl_parent(node);
-
-         if (parent == subroot_parent)
-            return NULL;
-
-         if (node == parent->left && parent->right)
-            return parent->right;
-
-         node = parent;
-      }
+   return (struct avl_node *)__bst_preorder_next(subroot_parent, node, __avl_parent, __parent_vbalance);
 }
 
 /*
@@ -1972,28 +2887,10 @@ HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_preorder_next(const struct avl_n
  * @node:           current node
  *
  * Return: next node in post-order, or NULL if none
- *
- * Post-order traversal: left subtree → right subtree → node
- *
- * Cases:
- *   - Current node is left child and parent has right child
- *       → first post-order node in parent's right subtree
- *   - Otherwise → parent
- *
  */
 HUZLIB_AVL_TREE_INTERNAL struct avl_node *__avl_postorder_next(const struct avl_node *restrict subroot_parent, const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-   struct avl_node *restrict parent = avl_parent(node);
-
-   if (parent == subroot_parent)
-      return NULL;
-
-   else if (node == parent->left && parent->right)
-      return avl_subtree_postorder_first(parent->right);
-
-   else
-      return parent;
+   return (struct avl_node *)__bst_postorder_next(subroot_parent, node, __avl_parent, __parent_vbalance);
 }
 
 
@@ -2804,7 +3701,6 @@ HUZLIB_AVL_TREE_API_INLINE __huzlib_pure__ bool avl_is_empty(const struct avl_ro
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_first(const struct avl_root *restrict root)
 {
-   __huzlib_assert(root);
    if (avl_is_empty(root))
       return NULL;
    else
@@ -2813,7 +3709,6 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_first(const struct avl_root *res
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_last(const struct avl_root *restrict root)
 {
-   __huzlib_assert(root);
    if (avl_is_empty(root))
       return NULL;
    else
@@ -2822,7 +3717,6 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_last(const struct avl_root *rest
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_first(const struct avl_root *restrict root)
 {
-   __huzlib_assert(root);
    if (avl_is_empty(root))
       return NULL;
    else
@@ -2832,18 +3726,12 @@ HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_first(const struct avl
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_first(const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-   while (node->left)
-      node = node->left;
-   return (struct avl_node *)node;
+   return (struct avl_node *)__bst_first(node, __parent_vbalance);
 }
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_last(const struct avl_node *restrict node)
 {
-   __huzlib_assert(node);
-   while (node->right)
-      node = node->right;
-   return (struct avl_node *)node;
+   return (struct avl_node *)__bst_last(node, __parent_vbalance);
 }
 
 HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_postorder_first(const struct avl_node *restrict node)
@@ -4619,10 +5507,6 @@ int main(void)
    // TODO: test avl_eject_first*_augmented varitants (x3)
 
    // TODO: test avl_eject_last_augmented (no need to test varitants)
-
-   // TODO: test avl_subtree_first, avl_subtree_last, avl_subtree_postorder_first
-
-   // TODO: test __avl_next, __avl_prev, __avl_preorder_next, __avl_postorder_first
 
    return UnityEnd();
 }
