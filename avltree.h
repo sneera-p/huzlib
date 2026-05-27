@@ -416,6 +416,33 @@
 
 
 
+/*
+ * __huzlib_export__
+ * -----------------
+ * Shared library build - export symbols with platform-specific attributes
+ */
+#ifndef __huzlib_export__
+#if defined(_WIN32) || defined(_WIN64)
+
+   #define __huzlib_export__ __declspec(dllexport)
+
+#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+
+   #define __huzlib_export__ __global
+
+#elif defined(__ARMCOMPILER_VERSION) || defined(__ARMCC_VERSION) || (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && (__clang_major__ >= 3)) || (defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20210000)) || (defined(__has_attribute) && __has_attribute(visibility))
+
+   #define __huzlib_export__ __attribute__((visibility("default")))
+
+#else
+
+   #define __huzlib_export__
+
+#endif
+#endif /* __huzlib_export__ */
+
+
+
 #ifndef __huzlib_assert
 /*
  * first, we check for NDEBUG, 
@@ -474,14 +501,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
-#ifdef NDEBUG
-   #define HUZLIB_AVL_TREE_API
-   #define HUZLIB_AVL_TREE_API_INLINE __huzlib_inline__
-#else
-   #define HUZLIB_AVL_TREE_API        __huzlib_noinline__
-   #define HUZLIB_AVL_TREE_API_INLINE inline
-#endif
 
 
 /*
@@ -794,6 +813,28 @@ struct avl_augment_callbacks
 };
 
 
+#if defined(HUZLIB_AVL_TREE_SHARED)
+
+   #define HUZLIB_AVL_TREE_API         __huzlib_export__ __huzlib_noinline__
+   #define HUZLIB_AVL_TREE_API_INLINE  __huzlib_export__ __huzlib_noinline__
+   #define HUZLIB_AVL_TREE_INTERNAL    static __huzlib_inline__
+
+#elif defined(NDEBUG)
+
+   #define HUZLIB_AVL_TREE_API
+   #define HUZLIB_AVL_TREE_API_INLINE  __huzlib_inline__
+   #define HUZLIB_AVL_TREE_INTERNAL    static __huzlib_inline__
+
+#else
+
+   #define HUZLIB_AVL_TREE_API         __huzlib_noinline__
+   #define HUZLIB_AVL_TREE_API_INLINE  inline
+   #define HUZLIB_AVL_TREE_INTERNAL    static
+
+#endif /* HUZLIB_AVL_TREE_SHARED */
+
+
+
 /* --- initialize operations --- */
 extern HUZLIB_AVL_TREE_API_INLINE void avl_node_init(struct avl_node *node);
 extern HUZLIB_AVL_TREE_API_INLINE void avl_node_linked_init(struct avl_node_linked *node);
@@ -865,10 +906,10 @@ extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_postorder_next(const stru
 
 
 /* --- subtree traversal --- */
-extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_next(const struct avl_node *subroot, const struct avl_node *node);
-extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_prev(const struct avl_node *subroot, const struct avl_node *node);
-extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_preorder_next(const struct avl_node *subroot, const struct avl_node *node);
-extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const struct avl_node *subroot, const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_next(const struct avl_node *subroot, const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_prev(const struct avl_node *subroot, const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_preorder_next(const struct avl_node *subroot, const struct avl_node *node);
+extern HUZLIB_AVL_TREE_API_INLINE struct avl_node *avl_subtree_postorder_next(const struct avl_node *subroot, const struct avl_node *node);
 
 
 
@@ -880,13 +921,6 @@ extern HUZLIB_AVL_TREE_API struct avl_node *avl_subtree_postorder_next(const str
 /* ------------------------------------------------- */
 /* --------------- helper functions  --------------- */
 /* ------------------------------------------------- */
-
-#ifdef NDEBUG
-   #define HUZLIB_AVL_TREE_INTERNAL static __huzlib_inline__
-#else
-   #define HUZLIB_AVL_TREE_INTERNAL static
-#endif /* NDEBUG */
-
 
 /*
  * __avl_parent(parent_vbalance)

@@ -153,3 +153,29 @@
 
 #endif
 #endif /* unreachable */
+
+
+/*
+ * __huzlib_export__
+ * -----------------
+ * Shared library build - export symbols with platform-specific attributes
+ */
+#ifndef __huzlib_export__
+#if defined(_WIN32) || defined(_WIN64)
+
+   #define __huzlib_export__ __declspec(dllexport)
+
+#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+
+   #define __huzlib_export__ __global
+
+#elif defined(__ARMCOMPILER_VERSION) || defined(__ARMCC_VERSION) || (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && (__clang_major__ >= 3)) || (defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20210000)) || (defined(__has_attribute) && __has_attribute(visibility))
+
+   #define __huzlib_export__ __attribute__((visibility("default")))
+
+#else
+
+   #define __huzlib_export__
+
+#endif
+#endif /* __huzlib_export__ */
