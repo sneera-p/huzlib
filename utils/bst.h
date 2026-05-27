@@ -1,5 +1,5 @@
-#ifndef HUZLIB_BST
-#define HUZLIB_BST
+#ifndef HUZLIB_BST_H
+#define HUZLIB_BST_H
 
 
 #ifndef HUZLIB_BST_INCLUDES
@@ -479,164 +479,164 @@
 
 
 /*
- * So I plan to have in this library about 3 specializations of BSTs namely
+ * So I plan to have 3 BSTs in this library:
  *
  *    1. AVL tree
  *    2. Red-Black tree
  *    3. Splay tree
  *
- * Now these trees still share the same traversal logic which is not optimized by
- * their special properties. So in a nutshell, I may be writing 3 duplicates of the
- * same code with the only difference being the type of node (avl_node, rb_node, splay_node)
+ * All 3 share the same traversal logic. The only difference is the node type.
  *
- * So avoid this replication and worship the almighty DRY, We are going to create
- * an abstracted macro template for 'foreach' macros here.
+ * I don't want to write the same foreach code 3 times. That's stupid.
+ * So I make one set of macros here. The tree implementations just wrap them.
  *
- * The goal is the same as before — DRY. Instead of writing avl_foreach,
- * rb_foreach, splay_foreach separately, we write one set of template macros
- * here and the tree implementations just wrap them.
+ * There are 4 macros:
  *
- * There are 4 template macros:
- *    1. __bst_foreach           - forward traversal
- *    2. __bst_foreach_safe      - same as (1) but safe to delete current node
- *    3. __bst_foreach_entry     - same as (1) but iterates the containing struct
- *    4. __bst_foreach_entry_safe- same as (3) but safe to delete current node
+ *    1. __bst_foreach
+ *       Walk through nodes. Simple.
  *
- * Each of these 4 macros covers BOTH the whole-tree and subtree cases via
- * __bst_traverse, which uses _Generic to dispatch on the traverse function's
- * type:
+ *    2. __bst_foreach_safe
+ *       Same but you can delete the current node. Safe.
  *
- *    __bst_fn(TYPE)         ->  TYPE *(*)(const TYPE *node)
- *    __bst_subtree_fn(TYPE) ->  TYPE *(*)(const TYPE *subroot, const TYPE *node)
+ *    3. __bst_foreach_entry
+ *       Walk through containers (structs that hold a node).
  *
- * If traverse matches __bst_fn, __bst_traverse calls traverse(node).
- * If traverse matches __bst_subtree_fn, it calls traverse(subroot, node).
- * Anything else is a compile error — no matching _Generic branch.
- * This collapses what would have been 8 macros down to 4.
+ *    4. __bst_foreach_entry_safe
+ *       Same but you can delete the current container. Safe.
  *
- * The traversal order is determined entirely by which functions the caller
- * passes in as start and traverse. The macro itself is just a structural
- * shell — it knows nothing about order. For example:
  *
- *    avl_first(root) + avl_next                     -> inorder (ascending)
- *    avl_last(root)  + avl_prev                     -> inorder (descending)
- *    avl_root_node(root) + avl_preorder_next        -> preorder
- *    avl_postorder_first(root) + avl_postorder_next -> postorder
+ * How do they know which order to walk?
+ * -------------------------------------------------
  *
- * So the ONE RING TO RULE THEM ALL philosophy applies twice here —
- * once across tree types (avl, rb, splay) and once across traversal
- * orders. One macro, infinite combinations.
+ * They don't. You tell them.
  *
- * The _entry macros let the caller iterate directly over the containing struct
- * instead of the raw node, like list_for_each_entry in the linux kernel.
- * They use a small trick to avoid needing an extra tmp variable just to hold
- * the raw node pointer during the container_of conversion:
+ * You give me two things:
+ *    start     -> the first node
+ *    traverse  -> how to get the next node from current
  *
- *    Step 1: store the raw node pointer into 'cur' via a cast. At this point
- *            'cur' is holding a node pointer disguised as a cur pointer —
- *            it is not a valid cur yet.
+ * That's it. I don't care if it's AVL, RB, Splay, or a damn linked list.
  *
- *    Step 2: NULL check 'cur' and if non-NULL, call container_of to convert
- *            it into a real cur pointer. Since the node member is at offset 0,
- *            container_of compiles down to a plain cast — zero overhead.
+ * Examples:
+ *    Inorder:     avl_first(root)     + avl_next(node)
+ *    Preorder:    root                + avl_preorder_next(node)
+ *    Postorder:   avl_postorder_first + avl_postorder_next(node)
  *
- * This two step pattern is safe because we never dereference 'cur' between
- * step 1 and step 2 — we only use it as an opaque pointer for the NULL check.
- * The same pattern repeats in the increment, so the condition always sees
- * either NULL or a properly converted cur pointer.
- * 
- * The _entry macros also use a && chain in the loop condition to combine the
- * NULL check and container_of conversion without a ternary:
+ * One macro. Infinite walks. One ring to rule them all.
  *
- *    (cur) = (type *)(start);                                                <- init
- *    ((cur) != NULL) && ((cur) = container_of((void *)(cur), type, member)); <- condition
  *
- * The && short-circuits naturally: if cur is NULL the container_of is
- * skipped and the loop terminates. If cur is non-NULL, container_of runs
- * and cur becomes a valid container pointer before the loop body executes.
+ * The dirty tricks (why the code looks weird)
+ * -------------------------------------------------
  *
- * The _safe variat uses this trick by hiding the pre-fetch of tmp 
- * inside the loop condition using || 1:
+ * 1. The _safe trick
+ * -------------------------------------------------
+ * Look at this:
+ *    ((node) != NULL) 
+ *       && (((tmp) = (traverse)) || 1)
  *
- *    ((node) != NULL) && (((tmp) = traverse(node)) || 1);
+ * Why? Because if traverse returns NULL (end of walk), the loop condition
+ * becomes false and skips the last node's body. That's wrong.
  *
- * The && short-circuits if node is NULL — loop ends, tmp is never touched.
- * If node is non-NULL, traverse runs and stores the result in tmp. But
- * traverse may return NULL (end of traversal), which would make the
- * condition false and skip the loop body for the current node — wrong.
+ * The "|| 1" forces it to be true no matter what. So the last node runs.
  *
- * The || 1 fixes this by forcing the condition true regardless of what
- * traverse returns, so the loop body always runs when node is non-NULL.
  *
- * The _entry_safe variant combines both of these tricks:
+ * 2. The _entry trick
+ * -------------------------------------------------
+ * Look at this:
+ *    (cur) = (type *)(start);               // step 1 - lie
+ *    ((cur) != NULL) 
+ *       && ((cur) = container_of(cur));     // step 2 - truth
  *
+ * Step 1: cur pretends to be a container pointer but actually holds a node pointer.
+ * Step 2: If cur isn't NULL, turn it into a real container pointer.
+ *
+ * We never use cur between step 1 and step 2. Only check if it's NULL.
+ * Safe.
+ *
+ *
+ * 3. The _entry_safe combo
+ * -------------------------------------------------
  *    ((cur) != NULL)
- *       && ((cur) = container_of((void *)(cur), type, member))
- *       && (((tmp) = (type *)traverse(...)) || 1);
+ *       && (((cur) = container_of((void *)(cur), type, member)) || 1)
+ *       && (((tmp) = (type *)(traverse)) || 1);
  *
- * container_of does not need the || 1 trick because it never returns NULL
- * — it is pure pointer arithmetic, so a non-NULL input always produces a
- * non-NULL output. The && just chains the pre-fetch of tmp cleanly onto
- * the same condition without breaking short-circuit behaviour.
+ * Both need || 1. Here's why:
  *
- * The _safe variants pre-fetch the next node into 'tmp' before the loop body
- * runs, so the caller can safely delete or modify 'cur' during iteration.
+ * container_of can return NULL. How? If the node pointer you pass in equals
+ * the offset of 'member' inside the struct. Example: if 'member' is at offset 8
+ * and someone hands you (void *)8, container_of subtracts 8 and gives you NULL.
  *
- * The caller injects their own typechecks via __VA_ARGS__ which is placed at
- * the very start of the for-init clause as comma expressions. This is also why
- * these macros are not meant to be called directly
+ * Is that likely? No. But the compiler doesn't know that. It sees a possible NULL.
+ * Without || 1, the whole condition could become false and skip the loop body.
+ *
+ * traverse might return NULL at the end of walk. Same problem. Same fix.
+ *
+ * So we slap || 1 on both. The && chain keeps short-circuit working.
+ * If cur is NULL, we bail early. Otherwise, both conversions run and we loop.
+ *
+ *
+ * Type checks (you won't shoot yourself in the foot)
+ * -------------------------------------------------
+ *
+ * The caller puts their own type checks in __VA_ARGS__.
+ * They sit at the start of the for-loop init.
+ *
+ * This makes sure:
+ *    - Your iterator variable has the right type
+ *    - traverse returns the right node type
+ *    - _entry macros match container type
+ *
+ * The tree wrappers add these checks. You don't call these macros directly.
+ * That's the deal.
  */
 
-#define __bst_fulltree_fn(TYPE)  TYPE *(*)(const TYPE *node)
-#define __bst_subtree_fn(TYPE)   TYPE *(*)(const TYPE *subroot, const TYPE *node)
-
-#define __bst_choose_fn(traverse, subroot, node) _Generic((subroot),                      \
-   typeof(*(node)) *: ((__bst_subtree_fn(typeof(*(node))))  (traverse))(subroot, node),   \
-   void *:            ((__bst_fulltree_fn(typeof(*(node)))) (traverse))(node)             \
-)
-
+#include <stddef.h>
 
 #define __bst_foreach(node, subroot, start, traverse, ...)              \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
       typecheck(typeof(*(node)), *(start)),                             \
+      typecheck(typeof(*(node)), *(traverse)),                          \
       (node) = (start);                                                 \
       (node) != NULL;                                                   \
-      (node) = __bst_choose_fn(traverse, subroot, node)                 \
+      (node) = (traverse)                                               \
    )
 
 #define __bst_foreach_safe(node, tmp, subroot, start, traverse, ...)    \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
-      typecheck(typeof(*(node)), *(start)),                             \
       typecheck(typeof(*(node)), *(tmp)),                               \
+      typecheck(typeof(*(node)), *(start)),                             \
+      typecheck(typeof(*(node)), *(traverse)),                          \
       (node) = (start);                                                 \
       ((node) != NULL)                                                  \
-         && (((tmp) = __bst_choose_fn(traverse, subroot, node)) || 1);  \
+         && (((tmp) = (traverse)) || 1);                                \
       (node) = (tmp)                                                    \
    )
 
-#define __bst_foreach_entry(cur, subroot, type, member, start, traverse, ...)             \
-   for (                                                                                  \
-      __VA_ARGS__, /* caller injected typechecks */                                       \
-      typecheck(type, *(cur)),                                                            \
-      typecheck(typeof_member(type, member), *(start)),                                   \
-      (cur) = (type *)(start);                                                            \
-      ((cur) != NULL) && ((cur) = container_of((void *)(cur), type, member));             \
-      (cur) = (type *)__bst_choose_fn(traverse, subroot, &(cur)->member)                  \
+#define __bst_foreach_entry(cur, subroot, type, member, start, traverse, ...)                   \
+   for (                                                                                        \
+      __VA_ARGS__, /* caller injected typechecks */                                             \
+      typecheck(type, *(cur)),                                                                  \
+      typecheck(typeof_member(type, member), *(start)),                                         \
+      typecheck(typeof_member(type, member), *(traverse)),                                      \
+      (cur) = (type *)(start);                                                                  \
+      ((cur) != NULL)                                                                           \
+         && (((cur) = container_of((typeof_member(type, member) *)(cur), type, member)) || 1);  \
+      (cur) = (type *)(traverse)                                                                \
    )
 
-#define __bst_foreach_entry_safe(cur, tmp, subroot, type, member, start, traverse, ...)   \
-   for (                                                                                  \
-      __VA_ARGS__, /* caller injected typechecks */                                       \
-      typecheck(type, *(cur)),                                                            \
-      typecheck(type, *(tmp)),                                                            \
-      typecheck(typeof_member(type, member), *(start)),                                   \
-      (cur) = (type *)(start);                                                            \
-      ((cur) != NULL)                                                                     \
-         && ((cur) = container_of((void *)(cur), type, member))                           \
-         && (((tmp) = (type *)__bst_choose_fn(traverse, subroot, &(cur)->member)) || 1);  \
-      (cur) = (tmp)                                                                       \
+#define __bst_foreach_entry_safe(cur, tmp, subroot, type, member, start, traverse, ...)         \
+   for (                                                                                        \
+      __VA_ARGS__, /* caller injected typechecks */                                             \
+      typecheck(type, *(cur)),                                                                  \
+      typecheck(type, *(tmp)),                                                                  \
+      typecheck(typeof_member(type, member), *(start)),                                         \
+      typecheck(typeof_member(type, member), *(traverse)),                                      \
+      (cur) = (type *)(start);                                                                  \
+      ((cur) != NULL)                                                                           \
+         && (((cur) = container_of((typeof_member(type, member) *)(cur), type, member)) || 1)   \
+         && (((tmp) = (type *)(traverse)) || 1);                                                \
+      (cur) = (tmp)                                                                             \
    )
 
 
@@ -646,47 +646,57 @@
 
 
 /*
- * So I plan to have in this library about 3 specializations of BSTs namely
+ * So I plan to have 3 BSTs in this library:
  *
  *    1. AVL tree
  *    2. Red-Black tree
  *    3. Splay tree
  *
- * Now these trees still share the same traversal logic which is not optimized by
- * their special properties. So in a nutshell, I may be writing 3 duplicates of the
- * same code with the only difference being the type of node (avl_node, rb_node, splay_node)
+ * All 3 share the same traversal logic. The only difference is the node type.
  *
- * So avoid this and worship the almighty DRY, we turn to linux/min_heap.h. (I know! sounds
- * ridiculous but bear with me). linux/min_heap.h uses a fake generic internal min_heap type
- * with
- *       TYPE = void / char
- *       CAPACITY = 0 / [] (flexible array member) 
+ * I don't want to write the same traversal code 3 times. That's stupid.
  *
- * and creates a set of functions around that type. Then it uses macros to convert and 
- * reconvert from actual type to internal type. This essentially creates one set of functions 
- * for every type of min_heap (ONE RING TO RULE THEM ALL), reducing code size massively.
+ * So I look at linux/min_heap.h for inspiration. (I know! sounds crazy but hear me out)
  *
- * Now after a little thinking, I realised I can apply it here! by creating an internal type named
- * 'struct bst_node', which will have the traversal functions written around it. and then the AVL/RB/splay
- * implementations will use these functions internally to do traversal (ofc they will wrap it)
+ * min_heap.h does this fake generic trick:
+ *    - Internal type = void / char
+ *    - Capacity = 0 / [] (flexible array)
+ *    - Write functions around the fake type
+ *    - Use macros to cast real type <-> internal type
  *
- * But there is a problem... the parent pointer of each node. Unlike a simple linked list where
- * the parent is just a plain pointer, each tree type hides extra information inside it. AVL trees
- * pack the balance factor into the low bits of the parent pointer. Red-Black trees pack the color
- * bit. So we cannot just read the parent field directly, each tree type needs its own small function
- * to extract the real parent pointer from the packed value.
+ * One set of functions. Every type of min_heap. ONE RING TO RULE THEM ALL.
  *
- * To solve this, bst_node stores the parent as a raw uintptr_t (an integer big enough to hold any
- * pointer) at offset 0, matching the layout of avl_node, rb_node and splay_node exactly. We then
- * pass a small __xxx_parent callback function to the traversal code which knows how to unpack the
- * parent for that specific tree type. Since these callbacks are force_inlined and always called with
- * a concrete known function, the compiler folds them away completely leaving zero overhead.
- * Converting between avl_node/rb_node/splay_node and bst_node is done safely via container_of
- * on the shared first member, avoiding any strict aliasing undefined behaviour.
+ * I steal this idea.
  *
- * And we're not done here... we can also make internal template generators for traversal macros like
- * avl_foreach, avl_foreach_safe etc.. by having additional macro parameters for __bst_first, __bst_next
- * which the tree implementations will provide their wrapped functions for and more DRY is saved
+ * I create an internal type called 'struct bst_node'.
+ * I write all traversal functions around this type.
+ * AVL/RB/splay just wrap these functions internally.
+ *
+ * But there's a problem...
+ *
+ * The parent pointer.
+ *
+ * In a simple linked list, parent is just a pointer. Simple.
+ * But AVL packs balance factor into the low bits of parent pointer.
+ * Red-Black packs the color bit.
+ * Splay does its own weird shit.
+ *
+ * I can't just read parent directly. Each tree needs its own tiny function
+ * to unpack the real parent from the packed value.
+ *
+ * Here's the fix:
+ *
+ * bst_node stores parent as a raw uintptr_t at offset 0.
+ * This matches the layout of avl_node, rb_node, splay_node exactly.
+ *
+ * The traversal code gets a small __xxx_parent callback that knows how to
+ * unpack parent for that specific tree type.
+ *
+ * These callbacks are force_inlined and always called with a concrete function.
+ * The compiler folds them away. Zero overhead.
+ *
+ * Converting between avl_node/rb_node/splay_node and bst_node?
+ * container_of on the shared first member. Safe. No strict aliasing bugs.
  */
 
 #include <stdint.h>
@@ -887,7 +897,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rm_linked(struct bst_node_linked *restrict
  * NOTE:
  * Does not update '__packed_parent' fields of 'node' and 'child'.
  * Caller must update them after rotation.
- *   eg: __avl_set_parent_balance(node, child, x);
+ *   eg: __rb_set_parent_color(node, child, RB_BLACK);
  */
 HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
@@ -921,7 +931,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left(struct bst_node *restrict node
  * NOTE:
  * Does not update '__packed_parent' fields of 'node' and 'child'.
  * Caller must update them after rotation.
- *    eg: __avl_set_parent_balance(node, child, x);
+ *    eg: __rb_set_parent_color(node, child, RB_RED);
  */
 HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
@@ -937,9 +947,10 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict nod
 }
 
 /*
- * __huzlib_bst_rotate_left_left(node, child, parent, link, set_parent)
- * --------------------------------------------------------------------
- * Standard BST left rotation on 'parent' and then left rotation on 'node'
+ * __huzlib_bst_rotate_left_left(parent, node, child, link, set_parent)
+ * ---------------------------------------------------------------------
+ * Double left rotation. parent moves down-right onto node, then node
+ * moves down-right onto child. child becomes the new subtree root.
  *
  *     p                             n                             c
  *    / \                          /   \                          / \
@@ -949,9 +960,9 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict nod
  *        / \                                                 / \
  *      (y) (z)                                             (w) (x)
  *
- * @node:       the node rotating on, not NULL
- * @child:      node's right child, not NULL
- * @parent:     node's parent (node is always parent's right child), not NULL
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's right child, not NULL
+ * @child:      node's right child, becomes the new subtree root, not NULL
  * @link:       parent->parent's internal pointer to parent, not NULL
  * @set_parent: parent setter
  *
@@ -961,7 +972,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict nod
  *    eg: __splay_set_parent(node, child);
  *        __splay_set_parent(parent, node);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->right == node));
 
@@ -972,18 +983,19 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict
       set_parent(child->left, node);
 
    parent->right = node->left;
-   child->left = node;
+   node->right = child->left;
 
    node->left = parent;
-   node->right = child->left;
+   child->left = node;
 
    *link = child;
 }
 
 /*
- * __huzlib_bst_rotate_right_right(node, child, parent, link, set_parent)
- * ----------------------------------------------------------------------
- * Standard BST right rotation on 'parent' and then right rotation on 'node'
+ * __huzlib_bst_rotate_right_right(parent, node, child, link, set_parent)
+ * -----------------------------------------------------------------------
+ * Double right rotation. parent moves down-left onto node, then node
+ * moves down-left onto child. child becomes the new subtree root.
  *
  *         p                         n                         c
  *        / \                      /   \                      / \
@@ -993,9 +1005,9 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict
  *    / \                                                         / \
  *  (z) (y)                                                     (x) (w)
  *
- * @node:       the node rotating on, not NULL
- * @child:      node's left child, not NULL
- * @parent:     node's parent (node is always parent's left child), not NULL
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's left child, not NULL
+ * @child:      node's left child, becomes the new subtree root, not NULL
  * @link:       parent->parent's internal pointer to parent, not NULL
  * @set_parent: parent setter
  *
@@ -1005,7 +1017,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict
  *    eg: __splay_set_parent(node, child);
  *        __splay_set_parent(parent, node);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->left == node));
 
@@ -1016,18 +1028,20 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restri
       set_parent(child->right, node);
 
    parent->left = node->right;
-   child->right = node;
+   node->left = child->right;
 
    node->right = parent;
-   node->left = child->right;
+   child->right = node;
 
    *link = child;
 }
 
 /*
- * __huzlib_bst_rotate_left_right(node, child, parent, link, set_parent)
- * ---------------------------------------------------------------------
- * Standard BST left rotation on 'node' and then right rotation on 'parent'
+ * __huzlib_bst_rotate_left_right(parent, node, child, link, set_parent)
+ * ----------------------------------------------------------------------
+ * Left-right double rotation. node rotates left, lifting child up between
+ * node and parent, then parent rotates right, making child the new subtree
+ * root with node and parent as its children.
  *
  *        p                         p                        c
  *       / \                       / \                     /   \
@@ -1037,9 +1051,9 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restri
  *       / \                   / \
  *     (y) (z)               (x) (y)
  *
- * @node:       the node rotating on, not NULL
- * @child:      node's right child, not NULL
- * @parent:     node's parent (node is always parent's left child), not NULL
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's left child, not NULL
+ * @child:      node's right child, becomes the new subtree root, not NULL
  * @link:       parent->parent's internal pointer to parent, not NULL
  * @set_parent: parent setter
  *
@@ -1049,7 +1063,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restri
  *    eg: __avl_set_parent_balance(node, child, x);
  *        __avl_set_parent_balance(parent, child, y);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->left == node));
 
@@ -1069,9 +1083,11 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restric
 }
 
 /*
- * __huzlib_bst_rotate_right_left(node, child, parent, link, set_parent)
- * ---------------------------------------------------------------------
- * Standard BST right rotation on 'node' and then left rotation on 'parent'
+ * __huzlib_bst_rotate_right_left(parent, node, child, link, set_parent)
+ * ----------------------------------------------------------------------
+ * Right-left double rotation. node rotates right, lifting child up between
+ * node and parent, then parent rotates left, making child the new subtree
+ * root with parent and node as its children.
  *
  *      p                       p                            c
  *     / \                     / \                         /   \
@@ -1081,9 +1097,9 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restric
  *     / \                         / \
  *   (z) (y)                     (y) (x)
  *
- * @node:       the node rotating on, not NULL
- * @child:      node's left child, not NULL
- * @parent:     node's parent (node is always parent's right child), not NULL
+ * @parent:     the subtree root rotating down, not NULL
+ * @node:       parent's right child, not NULL
+ * @child:      node's left child, becomes the new subtree root, not NULL
  * @link:       parent->parent's internal pointer to parent, not NULL
  * @set_parent: parent setter
  *
@@ -1093,7 +1109,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_right(struct bst_node *restric
  *    eg: __avl_set_parent_balance(node, child, x);
  *        __avl_set_parent_balance(parent, child, y);
  */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_left(struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node *restrict parent, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
+HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *, struct bst_node *))
 {
    __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->right == node));
 
@@ -1379,75 +1395,75 @@ HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const str
       bst_node_linked_cast(next, __parent_member)           \
    )
 
-#define __bst_rotate_left(node, child, link, set_parent, __parent_member)  \
-   __huzlib_bst_rotate_left(                                               \
-      bst_node_cast(node, __parent_member),                                \
-      bst_node_cast(child, __parent_member),                               \
-      (struct bst_node **)(link),                                          \
-      set_parent                                                           \
+#define __bst_rotate_left(node, child, link, set_parent, __parent_member)                 \
+   __huzlib_bst_rotate_left(                                                              \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
    )
 
-#define __bst_rotate_right(node, child, link, set_parent, __parent_member) \
-   __huzlib_bst_rotate_right(                                              \
-      bst_node_cast(node, __parent_member),                                \
-      bst_node_cast(child, __parent_member),                               \
-      (struct bst_node **)(link),                                          \
-      set_parent                                                           \
+#define __bst_rotate_right(node, child, link, set_parent, __parent_member)                \
+   __huzlib_bst_rotate_right(                                                             \
+      bst_node_cast(node, __parent_member),                                               \
+      bst_node_cast(child, __parent_member),                                              \
+      (struct bst_node **)(link),                                                         \
+      set_parent                                                                          \
    )
 
-#define __bst_rotate_left_left(node, child, parent, link, set_parent, __parent_member)    \
+#define __bst_rotate_left_left(parent, node, child, link, set_parent, __parent_member)    \
    __huzlib_bst_rotate_left_left(                                                         \
+      bst_node_cast(parent, __parent_member),                                             \
       bst_node_cast(node, __parent_member),                                               \
       bst_node_cast(child, __parent_member),                                              \
-      bst_node_cast(parent, __parent_member),                                             \
       (struct bst_node **)(link),                                                         \
       set_parent                                                                          \
    )
 
-#define __bst_rotate_right_right(node, child, parent, link, set_parent, __parent_member)  \
+#define __bst_rotate_right_right(parent, node, child, link, set_parent, __parent_member)  \
    __huzlib_bst_rotate_right_right(                                                       \
+      bst_node_cast(parent, __parent_member),                                             \
       bst_node_cast(node, __parent_member),                                               \
       bst_node_cast(child, __parent_member),                                              \
-      bst_node_cast(parent, __parent_member),                                             \
       (struct bst_node **)(link),                                                         \
       set_parent                                                                          \
    )
 
 
-#define __bst_rotate_left_right(node, child, parent, link, set_parent, __parent_member)   \
+#define __bst_rotate_left_right(parent, node, child, link, set_parent, __parent_member)   \
    __huzlib_bst_rotate_left_right(                                                        \
+      bst_node_cast(parent, __parent_member),                                             \
       bst_node_cast(node, __parent_member),                                               \
       bst_node_cast(child, __parent_member),                                              \
-      bst_node_cast(parent, __parent_member),                                             \
       (struct bst_node **)(link),                                                         \
       set_parent                                                                          \
    )
 
-#define __bst_rotate_right_left(node, child, parent, link, set_parent, __parent_member)   \
+#define __bst_rotate_right_left(parent, node, child, link, set_parent, __parent_member)   \
    __huzlib_bst_rotate_right_left(                                                        \
+      bst_node_cast(parent, __parent_member),                                             \
       bst_node_cast(node, __parent_member),                                               \
       bst_node_cast(child, __parent_member),                                              \
-      bst_node_cast(parent, __parent_member),                                             \
       (struct bst_node **)(link),                                                         \
       set_parent                                                                          \
    )
 
-#define __bst_first(node, __parent_member)      \
-   bst_node_recast(                             \
-      __huzlib_bst_first(                       \
-         bst_node_cast(node, __parent_member)   \
-      ),                                        \
-      typeof(*(node)),                          \
-      __parent_member                           \
+#define __bst_first(node, __parent_member)            \
+   bst_node_recast(                                   \
+      __huzlib_bst_first(                             \
+         bst_node_cast(node, __parent_member)         \
+      ),                                              \
+      typeof(*(node)),                                \
+      __parent_member                                 \
    )
 
-#define __bst_last(node, __parent_member)       \
-   bst_node_recast(                             \
-      __huzlib_bst_last(                        \
-         bst_node_cast(node, __parent_member)   \
-      ),                                        \
-      typeof(*(node)),                          \
-      __parent_member                           \
+#define __bst_last(node, __parent_member)             \
+   bst_node_recast(                                   \
+      __huzlib_bst_last(                              \
+         bst_node_cast(node, __parent_member)         \
+      ),                                              \
+      typeof(*(node)),                                \
+      __parent_member                                 \
    )
 
 #define __bst_postorder_first(node, __parent_member)  \
@@ -1545,6 +1561,7 @@ static void test_node_set_parent_bst(struct bst_node *node, struct bst_node *par
    );
 }
 
+
 /*
  * bst_setup_test_node(node, left, right, parent)
  * ----------------------------------------------
@@ -1590,8 +1607,8 @@ static void bst_setup_test_node_linked(struct test_node_linked *node, struct tes
 }
 
 
-void setUp() {}
-void tearDown() {}
+void setUp(void) {}
+void tearDown(void) {}
 
 
 static void test_bst_parent_ptr(void)
@@ -1743,240 +1760,259 @@ static void test_bst_add_rm_linked(void)
    TEST_ASSERT_EQUAL(b.prev, &a);
 }
 
-#ifndef TMP_GUARD
-#define TMP_GUARD
 
-// static void test_bst_rotate_left(void)
-// {
-//     /*
-//      *        p               p
-//      *         \               \
-//      *          n               c
-//      *         / \             / \
-//      *        a   c     =>    n   z
-//      *           / \         / \
-//      *          b   z       a   b
-//      */
-//     struct test_node p, n, c, a, b, z;
-//     bst_setup_test_node(&p, NULL, &n, NULL);
-//     bst_setup_test_node(&n, &a, &c, &p);
-//     bst_setup_test_node(&c, &b, &z, &n);
-//     bst_setup_test_node(&a, NULL, NULL, &n);
-//     bst_setup_test_node(&b, NULL, NULL, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &c);
-//
-//     __bst_rotate_left(&n, &c, &p.right, test_node_set_parent_bst, __parent);
-//
-//     /* Check parent pointers */
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &p);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&a), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&b), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &c);
-//
-//     /* Check child pointers */
-//     TEST_ASSERT_EQUAL(p.right, &c);
-//     TEST_ASSERT_EQUAL(c.left, &n);
-//     TEST_ASSERT_EQUAL(c.right, &z);
-//     TEST_ASSERT_EQUAL(n.left, &a);
-//     TEST_ASSERT_EQUAL(n.right, &b);
-// }
+static void test_bst_rotate_left(void)
+{
+   /*
+    *  p                p
+    *   \                \
+    *    n                c
+    *   / \              / \
+    *  x   c     =>     n   z
+    *     / \          / \
+    *    y   z        x   y
+    */
+   struct test_node p, n, c, x, y, z;
+   bst_setup_test_node(&p, NULL, &n, NULL);
+   bst_setup_test_node(&n, &x,   &c, &p);
+   bst_setup_test_node(&c, &y,   &z, &n);
+   bst_setup_test_node(&x, NULL, NULL, &n);
+   bst_setup_test_node(&y, NULL, NULL, &c);
+   bst_setup_test_node(&z, NULL, NULL, &c);
 
-// static void test_bst_rotate_right(void)
-// {
-//     /*
-//      *          p           p
-//      *         /           /
-//      *        n           c
-//      *       / \         / \
-//      *      c   a   =>  z   n
-//      *     / \             / \
-//      *    z   b           b   a
-//      */
-//     struct test_node p, n, c, a, b, z;
-//     bst_setup_test_node(&p, &n, NULL, NULL);
-//     bst_setup_test_node(&n, &c, &a, &p);
-//     bst_setup_test_node(&c, &z, &b, &n);
-//     bst_setup_test_node(&a, NULL, NULL, &n);
-//     bst_setup_test_node(&b, NULL, NULL, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &c);
-//
-//     __bst_rotate_right(&n, &c, &p.left, test_node_set_parent_bst, __parent);
-//
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &p);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&a), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&b), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &c);
-//
-//     TEST_ASSERT_EQUAL(p.left, &c);
-//     TEST_ASSERT_EQUAL(c.left, &z);
-//     TEST_ASSERT_EQUAL(c.right, &n);
-//     TEST_ASSERT_EQUAL(n.left, &b);
-//     TEST_ASSERT_EQUAL(n.right, &a);
-// }
-//
-// static void test_bst_rotate_left_left(void)
-// {
-//     /*
-//      *        g               g
-//      *       /               /
-//      *      p               c
-//      *       \             / \
-//      *        n     =>    n   z
-//      *         \         / \
-//      *          c       p   y
-//      *         / \       \
-//      *        y   z       x
-//      */
-//     struct test_node g, p, n, c, x, y, z;
-//     bst_setup_test_node(&g, &p, NULL, NULL);
-//     bst_setup_test_node(&p, NULL, &n, &g);
-//     bst_setup_test_node(&n, &x, &c, &p);
-//     bst_setup_test_node(&c, &y, &z, &n);
-//     bst_setup_test_node(&x, NULL, NULL, &n);
-//     bst_setup_test_node(&y, NULL, NULL, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &c);
-//
-//     __bst_rotate_left_left(&n, &c, &p, &g.left, test_node_set_parent_bst, __parent);
-//
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &g);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&p), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&x), &p);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&y), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &c);
-//
-//     TEST_ASSERT_EQUAL(g.left, &c);
-//     TEST_ASSERT_EQUAL(c.left, &n);
-//     TEST_ASSERT_EQUAL(c.right, &z);
-//     TEST_ASSERT_EQUAL(n.left, &p);
-//     TEST_ASSERT_EQUAL(n.right, &y);
-//     TEST_ASSERT_EQUAL(p.right, &x);
-// }
-//
-// static void test_bst_rotate_right_right(void)
-// {
-//     /*
-//      *        g               g
-//      *         \               \
-//      *          p               c
-//      *         /               / \
-//      *        n       =>      y   n
-//      *       /                   / \
-//      *      c                   x   p
-//      *     / \                 /
-//      *    y   z               z
-//      */
-//     struct test_node g, p, n, c, x, y, z;
-//     bst_setup_test_node(&g, NULL, &p, NULL);
-//     bst_setup_test_node(&p, &n, NULL, &g);
-//     bst_setup_test_node(&n, &c, &x, &p);
-//     bst_setup_test_node(&c, &y, &z, &n);
-//     bst_setup_test_node(&x, NULL, NULL, &n);
-//     bst_setup_test_node(&y, NULL, NULL, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &c);
-//
-//     __bst_rotate_right_right(&n, &c, &p, &g.right, test_node_set_parent_bst, __parent);
-//
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &g);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&p), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&x), &p);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&y), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &n);
-//
-//     TEST_ASSERT_EQUAL(g.right, &c);
-//     TEST_ASSERT_EQUAL(c.left, &y);
-//     TEST_ASSERT_EQUAL(c.right, &n);
-//     TEST_ASSERT_EQUAL(n.left, &z);
-//     TEST_ASSERT_EQUAL(n.right, &p);
-//     TEST_ASSERT_EQUAL(p.left, &x);
-// }
-//
-// static void test_bst_rotate_left_right(void)
-// {
-//     /*
-//      *        g               g
-//      *       /               /
-//      *      p               c
-//      *     /               / \
-//      *    n       =>      n   p
-//      *     \             / \   \
-//      *      c           x   y   z
-//      *     / \
-//      *    x   y
-//      *         \
-//      *          z
-//      */
-//     struct test_node g, p, n, c, x, y, z;
-//     bst_setup_test_node(&g, &p, NULL, NULL);
-//     bst_setup_test_node(&p, &n, NULL, &g);
-//     bst_setup_test_node(&n, NULL, &c, &p);
-//     bst_setup_test_node(&c, &x, &y, &n);
-//     bst_setup_test_node(&x, NULL, NULL, &c);
-//     bst_setup_test_node(&y, NULL, &z, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &y);
-//
-//     __bst_rotate_left_right(&n, &c, &p, &g.left, test_node_set_parent_bst, __parent);
-//
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &g);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&p), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&x), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&y), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &p);
-//
-//     TEST_ASSERT_EQUAL(g.left, &c);
-//     TEST_ASSERT_EQUAL(c.left, &n);
-//     TEST_ASSERT_EQUAL(c.right, &p);
-//     TEST_ASSERT_EQUAL(n.left, &x);
-//     TEST_ASSERT_EQUAL(n.right, &y);
-//     TEST_ASSERT_EQUAL(p.right, &z);
-// }
-//
-// static void test_bst_rotate_right_left(void)
-// {
-//     /*
-//      *        g               g
-//      *         \               \
-//      *          p               c
-//      *           \             / \
-//      *            n    =>     p   n
-//      *           /           /   /
-//      *          c           x   y
-//      *         / \             /
-//      *        x   y           z
-//      *           /
-//      *          z
-//      */
-//     struct test_node g, p, n, c, x, y, z;
-//     bst_setup_test_node(&g, NULL, &p, NULL);
-//     bst_setup_test_node(&p, NULL, &n, &g);
-//     bst_setup_test_node(&n, &c, NULL, &p);
-//     bst_setup_test_node(&c, &x, &y, &n);
-//     bst_setup_test_node(&x, NULL, NULL, &c);
-//     bst_setup_test_node(&y, &z, NULL, &c);
-//     bst_setup_test_node(&z, NULL, NULL, &y);
-//
-//     __bst_rotate_right_left(&n, &c, &p, &g.right, test_node_set_parent_bst, __parent);
-//
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&c), &g);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&p), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&n), &c);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&x), &p);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&y), &n);
-//     TEST_ASSERT_EQUAL(test_node_get_parent(&z), &y);
-//
-//     TEST_ASSERT_EQUAL(g.right, &c);
-//     TEST_ASSERT_EQUAL(c.left, &p);
-//     TEST_ASSERT_EQUAL(c.right, &n);
-//     TEST_ASSERT_EQUAL(p.left, &x);
-//     TEST_ASSERT_EQUAL(n.left, &y);
-//     TEST_ASSERT_EQUAL(y.left, &z);
-// }
+   __bst_rotate_left(&n, &c, &p.right, test_node_set_parent_bst, __parent);
 
-#endif /* TMP_GUARD */
+   /* link updated */
+   TEST_ASSERT_EQUAL(p.right, &c);
+
+   /* c takes n's place */
+   TEST_ASSERT_EQUAL(c.left,  &n);
+   TEST_ASSERT_EQUAL(c.right, &z);
+
+   /* n gets c's old left child */
+   TEST_ASSERT_EQUAL(n.left,  &x);
+   TEST_ASSERT_EQUAL(n.right, &y);
+
+   /* parent pointer of adopted child updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &n);
+}
+
+static void test_bst_rotate_right(void)
+{
+   /*
+    *         p            p
+    *        /            /
+    *       n            c
+    *      / \          / \
+    *     c   x   =>   z   n
+    *    / \              / \
+    *   z   y            y   x
+    */
+   struct test_node p, n, c, x, y, z;
+   bst_setup_test_node(&p, &n,   NULL, NULL);
+   bst_setup_test_node(&n, &c,   &x,   &p);
+   bst_setup_test_node(&c, &z,   &y,   &n);
+   bst_setup_test_node(&x, NULL, NULL,  &n);
+   bst_setup_test_node(&y, NULL, NULL,  &c);
+   bst_setup_test_node(&z, NULL, NULL,  &c);
+
+   __bst_rotate_right(&n, &c, &p.left, test_node_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL(p.left, &c);
+
+   /* c takes n's place */
+   TEST_ASSERT_EQUAL(c.left,  &z);
+   TEST_ASSERT_EQUAL(c.right, &n);
+
+   /* n gets c's old right child */
+   TEST_ASSERT_EQUAL(n.left,  &y);
+   TEST_ASSERT_EQUAL(n.right, &x);
+
+   /* parent pointer of adopted child updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &n);
+}
+
+static void test_bst_rotate_left_left(void)
+{
+   /*
+    *      g                  g
+    *     /                  /
+    *    p                  c
+    *   / \                / \
+    *  w   n      =>      n   z
+    *     / \            / \
+    *    x   c          p   y
+    *       / \        / \
+    *      y   z      w   x
+    */
+   struct test_node g, p, n, c, w, x, y, z;
+   bst_setup_test_node(&g, &p,   NULL, NULL);
+   bst_setup_test_node(&p, &w,   &n,   &g);
+   bst_setup_test_node(&n, &x,   &c,   &p);
+   bst_setup_test_node(&c, &y,   &z,   &n);
+   bst_setup_test_node(&w, NULL, NULL,  &p);
+   bst_setup_test_node(&x, NULL, NULL,  &n);
+   bst_setup_test_node(&y, NULL, NULL,  &c);
+   bst_setup_test_node(&z, NULL, NULL,  &c);
+
+   __bst_rotate_left_left(&p, &n, &c, &g.left, test_node_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL(g.left, &c);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL(c.left,  &n);
+   TEST_ASSERT_EQUAL(c.right, &z);
+
+   /* n gets p and y */
+   TEST_ASSERT_EQUAL(n.left,  &p);
+   TEST_ASSERT_EQUAL(n.right, &y);
+
+   /* p keeps w, gets x */
+   TEST_ASSERT_EQUAL(p.left,  &w);
+   TEST_ASSERT_EQUAL(p.right, &x);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(x.__parent), &p);
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &n);
+}
+
+static void test_bst_rotate_right_right(void)
+{
+   /*
+    *      g                  g
+    *       \                  \
+    *        p                  c
+    *       / \                / \
+    *      n   w      =>      z   n
+    *     / \                    / \
+    *    c   x                  y   p
+    *   / \                        / \
+    *  z   y                      x   w
+    */
+   struct test_node g, p, n, c, w, x, y, z;
+   bst_setup_test_node(&g, NULL, &p,   NULL);
+   bst_setup_test_node(&p, &n,   &w,   &g);
+   bst_setup_test_node(&n, &c,   &x,   &p);
+   bst_setup_test_node(&c, &z,   &y,   &n);
+   bst_setup_test_node(&w, NULL, NULL,  &p);
+   bst_setup_test_node(&x, NULL, NULL,  &n);
+   bst_setup_test_node(&y, NULL, NULL,  &c);
+   bst_setup_test_node(&z, NULL, NULL,  &c);
+
+   __bst_rotate_right_right(&p, &n, &c, &g.right, test_node_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL(g.right, &c);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL(c.left,  &z);
+   TEST_ASSERT_EQUAL(c.right, &n);
+
+   /* n gets y and p */
+   TEST_ASSERT_EQUAL(n.left,  &y);
+   TEST_ASSERT_EQUAL(n.right, &p);
+
+   /* p keeps w, gets x */
+   TEST_ASSERT_EQUAL(p.left,  &x);
+   TEST_ASSERT_EQUAL(p.right, &w);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(x.__parent), &p);
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &n);
+}
+
+static void test_bst_rotate_left_right(void)
+{
+   /*
+    *      g                  g
+    *     /                  /
+    *    p                  c
+    *   / \                / \
+    *  n   w      =>      n   p
+    *     / \            / \ / \
+    *    x   c          x  y z  w
+    *       / \
+    *      y   z
+    */
+   struct test_node g, p, n, c, w, x, y, z;
+   bst_setup_test_node(&g, &p,   NULL, NULL);
+   bst_setup_test_node(&p, &n,   &w,   &g);
+   bst_setup_test_node(&n, &x,   &c,   &p);
+   bst_setup_test_node(&c, &y,   &z,   &n);
+   bst_setup_test_node(&w, NULL, NULL,  &p);
+   bst_setup_test_node(&x, NULL, NULL,  &n);
+   bst_setup_test_node(&y, NULL, NULL,  &c);
+   bst_setup_test_node(&z, NULL, NULL,  &c);
+
+   __bst_rotate_left_right(&p, &n, &c, &g.left, test_node_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL(g.left, &c);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL(c.left,  &n);
+   TEST_ASSERT_EQUAL(c.right, &p);
+
+   /* n gets x and y */
+   TEST_ASSERT_EQUAL(n.left,  &x);
+   TEST_ASSERT_EQUAL(n.right, &y);
+
+   /* p gets z and w */
+   TEST_ASSERT_EQUAL(p.left,  &z);
+   TEST_ASSERT_EQUAL(p.right, &w);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &n);
+   TEST_ASSERT_EQUAL(test_node_get_parent(z.__parent), &p);
+}
+
+static void test_bst_rotate_right_left(void)
+{
+   /*
+    *    g                  g
+    *     \                  \
+    *      p                  c
+    *     / \                / \
+    *    w   n      =>      p   n
+    *       / \            / \ / \
+    *      c   x          w  y z  x
+    *     / \
+    *    y   z
+    */
+   struct test_node g, p, n, c, w, x, y, z;
+   bst_setup_test_node(&g, NULL, &p,   NULL);
+   bst_setup_test_node(&p, &w,   &n,   &g);
+   bst_setup_test_node(&n, &c,   &x,   &p);
+   bst_setup_test_node(&c, &y,   &z,   &n);
+   bst_setup_test_node(&w, NULL, NULL,  &p);
+   bst_setup_test_node(&x, NULL, NULL,  &n);
+   bst_setup_test_node(&y, NULL, NULL,  &c);
+   bst_setup_test_node(&z, NULL, NULL,  &c);
+
+   __bst_rotate_right_left(&p, &n, &c, &g.right, test_node_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL(g.right, &c);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL(c.left,  &p);
+   TEST_ASSERT_EQUAL(c.right, &n);
+
+   /* p gets w and y */
+   TEST_ASSERT_EQUAL(p.left,  &w);
+   TEST_ASSERT_EQUAL(p.right, &y);
+
+   /* n gets z and x */
+   TEST_ASSERT_EQUAL(n.left,  &z);
+   TEST_ASSERT_EQUAL(n.right, &x);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL(test_node_get_parent(y.__parent), &p);
+   TEST_ASSERT_EQUAL(test_node_get_parent(z.__parent), &n);
+}
+
 
 static void test_bst_first_last_postorder_first(void)
 {
@@ -2191,7 +2227,198 @@ static void test_bst_postorder_next(void)
 }
 
 
-int main()
+struct test_container
+{
+   int padding[2];
+   struct test_node bst;
+   int key;
+};
+
+static struct test_node *test_node_first(const struct test_node *subroot)
+{
+   return (struct test_node *)__bst_first(subroot, __parent);
+}
+
+static struct test_node *test_node_next(const struct test_node *subroot, const struct test_node *node)
+{
+   return (struct test_node *)__bst_next(test_node_get_parent(subroot->__parent), node, test_node_get_parent, __parent);
+}
+
+static void test_node_bst_foreach(void)
+{
+   #define SIZE 17
+   struct test_node n[SIZE];
+
+   /*
+    *                  10
+    *             /          \
+    *           8            13
+    *        /    \        /    \
+    *       4      9     11      14
+    *     /  \             \       \
+    *    0    5             12      16
+    *     \    \                    /
+    *     2     7                 15
+    *    / \   /
+    *   1  3  6
+    */
+   bst_setup_test_node(n + 10, n + 8,  n + 13, NULL);
+   bst_setup_test_node(n + 8,  n + 4,  n + 9,  n + 10);
+   bst_setup_test_node(n + 13, n + 11, n + 14, n + 10);
+   bst_setup_test_node(n + 4,  n + 0,  n + 5,  n + 8);
+   bst_setup_test_node(n + 9,  NULL,   NULL,   n + 8);
+   bst_setup_test_node(n + 11, NULL,   n + 12, n + 13);
+   bst_setup_test_node(n + 14, NULL,   n + 16, n + 13);
+   bst_setup_test_node(n + 0,  NULL,   n + 2,  n + 4);
+   bst_setup_test_node(n + 5,  NULL,   n + 7,  n + 4);
+   bst_setup_test_node(n + 12, NULL,   NULL,   n + 11);
+   bst_setup_test_node(n + 16, n + 15, NULL,   n + 14);
+   bst_setup_test_node(n + 2,  n + 1,  n + 3,  n + 0);
+   bst_setup_test_node(n + 7,  n + 6,  NULL,   n + 5);
+   bst_setup_test_node(n + 15, NULL,   NULL,   n + 16);
+   bst_setup_test_node(n + 1,  NULL,   NULL,   n + 2);
+   bst_setup_test_node(n + 3,  NULL,   NULL,   n + 2);
+   bst_setup_test_node(n + 6,  NULL,   NULL,   n + 7);
+
+   struct test_node *node, *tmp, *subroot = n + 10;
+
+   // foreach unsafe
+   #define test_node_foreach(node, subroot)     \
+      __bst_foreach(node, subroot,              \
+         test_node_first(subroot),              \
+         test_node_next(subroot, node),         \
+         typecheck(struct test_node, *(node))   \
+      )
+
+   size_t i = 0;
+   test_node_foreach(node, subroot)
+   {
+      TEST_ASSERT_EQUAL(node, n + i);
+      i++;
+   }
+
+   // foreach unsafe
+   #define test_node_foreach_safe(node, tmp, subroot) \
+      __bst_foreach_safe(node, tmp, subroot,          \
+         test_node_first(subroot),                    \
+         test_node_next(subroot, node),               \
+         typecheck(struct test_node, *(node)),        \
+         typecheck(struct test_node, *(tmp))          \
+      )
+
+
+   i = 0;
+   test_node_foreach_safe(node, tmp, subroot) 
+   {
+      if (i < SIZE - 1)
+        TEST_ASSERT_EQUAL(tmp, n + i + 1);  // tmp should be the next node
+      else
+        TEST_ASSERT_NULL(tmp);
+
+      TEST_ASSERT_EQUAL(node, n + i);
+      node = NULL; // simulate free()
+      i++;
+   }
+
+   #undef test_node_foreach_safe
+   #undef test_node_foreach
+   #undef SIZE
+}
+
+static void test_node_bst_foreach_entry(void)
+{
+   #define SIZE 17
+   struct test_container containers[SIZE];
+   struct test_node *nodes[SIZE];
+
+   /*
+    * Tree structure (same as before):
+    *                  10
+    *             /          \
+    *           8            13
+    *        /    \        /    \
+    *       4      9     11      14
+    *     /  \             \       \
+    *    0    5             12      16
+    *     \    \                    /
+    *     2     7                 15
+    *    / \   /
+    *   1  3  6
+    */
+   bst_setup_test_node(&containers[10].bst, &containers[8].bst,  &containers[13].bst, NULL);
+   bst_setup_test_node(&containers[8].bst,  &containers[4].bst,  &containers[9].bst,  &containers[10].bst);
+   bst_setup_test_node(&containers[13].bst, &containers[11].bst, &containers[14].bst, &containers[10].bst);
+   bst_setup_test_node(&containers[4].bst,  &containers[0].bst,  &containers[5].bst,  &containers[8].bst);
+   bst_setup_test_node(&containers[9].bst,  NULL,                NULL,                &containers[8].bst);
+   bst_setup_test_node(&containers[11].bst, NULL,                &containers[12].bst, &containers[13].bst);
+   bst_setup_test_node(&containers[14].bst, NULL,                &containers[16].bst, &containers[13].bst);
+   bst_setup_test_node(&containers[0].bst,  NULL,                &containers[2].bst,  &containers[4].bst);
+   bst_setup_test_node(&containers[5].bst,  NULL,                &containers[7].bst,  &containers[4].bst);
+   bst_setup_test_node(&containers[12].bst, NULL,                NULL,                &containers[11].bst);
+   bst_setup_test_node(&containers[16].bst, &containers[15].bst, NULL,                &containers[14].bst);
+   bst_setup_test_node(&containers[2].bst,  &containers[1].bst,  &containers[3].bst,  &containers[0].bst);
+   bst_setup_test_node(&containers[7].bst,  &containers[6].bst,  NULL,                &containers[5].bst);
+   bst_setup_test_node(&containers[15].bst, NULL,                NULL,                &containers[16].bst);
+   bst_setup_test_node(&containers[1].bst,  NULL,                NULL,                &containers[2].bst);
+   bst_setup_test_node(&containers[3].bst,  NULL,                NULL,                &containers[2].bst);
+   bst_setup_test_node(&containers[6].bst,  NULL,                NULL,                &containers[7].bst);
+
+   for (int i = 0; i < SIZE; i++)
+      nodes[i] = &containers[i].bst;
+
+   struct test_container *cur, *tmp;
+   struct test_node *subroot = nodes[10];
+
+   /* For each_entry unsafe - iterates over containers in inorder */
+   #define test_node_foreach_entry(cur, subroot)                           \
+      __bst_foreach_entry(cur, subroot, struct test_container, bst,        \
+         test_node_first(subroot),                                         \
+         test_node_next(subroot, &(cur)->bst),                             \
+         typecheck(struct test_container, *(cur)),                         \
+         typecheck(typeof_member(struct test_container, bst), *(subroot))  \
+      )
+
+   size_t i = 0;
+   test_node_foreach_entry(cur, subroot)
+   {
+      TEST_ASSERT_EQUAL(cur, containers + i);
+      i++;
+   }
+   TEST_ASSERT_EQUAL(i, SIZE);
+
+   /* For each_entry_safe - safe to delete current node */
+   #define test_node_foreach_entry_safe(cur, tmp, subroot)                    \
+      __bst_foreach_entry_safe(cur, tmp, subroot, struct test_container, bst, \
+         test_node_first(subroot),                                            \
+         test_node_next(subroot, &cur->bst),                                  \
+         typecheck(struct test_container, *(cur)),                            \
+         typecheck(struct test_container, *(tmp)),                            \
+         typecheck(struct test_node, *test_node_first(subroot)),              \
+         typecheck(typeof_member(struct test_container, bst), *(subroot))     \
+      )
+
+   i = 0;
+   test_node_foreach_entry_safe(cur, tmp, subroot)
+   {
+      if (i < SIZE - 1)
+         TEST_ASSERT_EQUAL(tmp, nodes[i + 1]);  /* tmp should be the next node's bst member */
+      else
+         TEST_ASSERT_NULL(tmp);
+
+      TEST_ASSERT_EQUAL(cur, containers + i);
+
+      /* Simulate deleting/freeing the current container */
+      cur = NULL;
+      i++;
+   }
+
+   #undef test_node_foreach_entry_safe
+   #undef test_node_foreach_entry
+   #undef SIZE
+}
+
+
+int main(void)
 {
    UnityBegin("test/bst.h");
 
@@ -2200,17 +2427,20 @@ int main()
    RUN_TEST(test_bst_replace_node);
    RUN_TEST(test_bst_add_rm_linked);
 
-   // RUN_TEST(test_bst_rotate_left);
-   // RUN_TEST(test_bst_rotate_right);
-   // RUN_TEST(test_bst_rotate_left_left);
-   // RUN_TEST(test_bst_rotate_right_right);
-   // RUN_TEST(test_bst_rotate_left_right);
-   // RUN_TEST(test_bst_rotate_right_left);
+   RUN_TEST(test_bst_rotate_left);
+   RUN_TEST(test_bst_rotate_right);
+   RUN_TEST(test_bst_rotate_left_left);
+   RUN_TEST(test_bst_rotate_right_right);
+   RUN_TEST(test_bst_rotate_left_right);
+   RUN_TEST(test_bst_rotate_right_left);
 
    RUN_TEST(test_bst_first_last_postorder_first);
    RUN_TEST(test_bst_next_prev);
    RUN_TEST(test_bst_preorder_next);
    RUN_TEST(test_bst_postorder_next);
+
+   RUN_TEST(test_node_bst_foreach);
+   RUN_TEST(test_node_bst_foreach_entry);
 
    return UnityEnd();
 }
@@ -2218,4 +2448,4 @@ int main()
 #endif /* HUZLIB_BST_TEST */
 
 
-#endif /* HUZLIB_BST */
+#endif /* HUZLIB_BST_H */
