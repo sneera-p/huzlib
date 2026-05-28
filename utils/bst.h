@@ -591,7 +591,7 @@
 
 #include <stddef.h>
 
-#define __bst_foreach(node, subroot, start, traverse, ...)              \
+#define __bst_foreach(node, start, traverse, ...)                       \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
       typecheck(typeof(*(node)), *(start)),                             \
@@ -601,7 +601,7 @@
       (node) = (traverse)                                               \
    )
 
-#define __bst_foreach_safe(node, tmp, subroot, start, traverse, ...)    \
+#define __bst_foreach_safe(node, tmp, start, traverse, ...)             \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
       typecheck(typeof(*(node)), *(tmp)),                               \
@@ -613,7 +613,7 @@
       (node) = (tmp)                                                    \
    )
 
-#define __bst_foreach_entry(cur, subroot, type, member, start, traverse, ...)                   \
+#define __bst_foreach_entry(cur, type, member, start, traverse, ...)                            \
    for (                                                                                        \
       __VA_ARGS__, /* caller injected typechecks */                                             \
       typecheck(type, *(cur)),                                                                  \
@@ -625,7 +625,7 @@
       (cur) = (type *)(traverse)                                                                \
    )
 
-#define __bst_foreach_entry_safe(cur, tmp, subroot, type, member, start, traverse, ...)         \
+#define __bst_foreach_entry_safe(cur, tmp, type, member, start, traverse, ...)                  \
    for (                                                                                        \
       __VA_ARGS__, /* caller injected typechecks */                                             \
       typecheck(type, *(cur)),                                                                  \
@@ -719,7 +719,7 @@ struct bst_node_linked
 #ifdef NDEBUG
    #define HUZLIB_BST_INTERNAL static __huzlib_inline__
 #else
-   #define HUZLIB_BST_INTERNAL static inline
+   #define HUZLIB_BST_INTERNAL static __huzlib_noinline__
 #endif
 
 
@@ -815,7 +815,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_delink_node(struct bst_node *restrict chil
  */
 HUZLIB_BST_INTERNAL void __huzlib_bst_replace_node(struct bst_node *restrict old, struct bst_node *restrict new, struct bst_node **restrict link)
 {
-   __huzlib_assert(old && new && link && (*link == old) && augment_copy);
+   __huzlib_assert(old && new && link && (*link == old));
    *link = new;
    new->__packed_parent = old->__packed_parent;
 }
@@ -1429,7 +1429,6 @@ HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const str
       set_parent                                                                          \
    )
 
-
 #define __bst_rotate_left_right(parent, node, child, link, set_parent, __parent_member)   \
    __huzlib_bst_rotate_left_right(                                                        \
       bst_node_cast(parent, __parent_member),                                             \
@@ -1543,17 +1542,16 @@ struct test_node_linked
 
 static void *test_node_get_parent(const uintptr_t __parent)
 {
-   __huzlib_assert(node);
    return (void *)__parent;
 }
 
-static void test_node_set_parent(struct test_node *node, struct test_node *parent)
+static void test_node_set_parent(struct test_node *restrict node, const struct test_node *restrict parent)
 {
    __huzlib_assert(node);
    node->__parent = (uintptr_t)parent;
 }
 
-static void test_node_set_parent_bst(struct bst_node *node, struct bst_node *parent)
+static void test_node_set_parent_bst(struct bst_node *restrict node, const struct bst_node *restrict parent)
 {
    test_node_set_parent(
       bst_node_recast(node, struct test_node, __parent),
@@ -1659,9 +1657,10 @@ static void test_bst_delink_node(void)
     */
    bst_setup_test_node(&g, &parent, NULL, NULL);
    bst_setup_test_node(&parent, NULL, &node, &g);
-   bst_setup_test_node(&node, &t, &u, &parent);
-   bst_setup_test_node(&t, NULL, NULL, &node);
-   bst_setup_test_node(&u, NULL, NULL, &node);
+   bst_setup_test_node(&node, &child, NULL, &parent);
+   bst_setup_test_node(&child, &t, &u, &node);
+   bst_setup_test_node(&t, NULL, NULL, &child);
+   bst_setup_test_node(&u, NULL, NULL, &child);
 
    __bst_delink_node(&child, &parent, &parent.right, test_node_set_parent_bst, __parent);
 
@@ -2284,7 +2283,7 @@ static void test_node_bst_foreach(void)
 
    // foreach unsafe
    #define test_node_foreach(node, subroot)     \
-      __bst_foreach(node, subroot,              \
+      __bst_foreach(node,                       \
          test_node_first(subroot),              \
          test_node_next(subroot, node),         \
          typecheck(struct test_node, *(node))   \
@@ -2299,7 +2298,7 @@ static void test_node_bst_foreach(void)
 
    // foreach unsafe
    #define test_node_foreach_safe(node, tmp, subroot) \
-      __bst_foreach_safe(node, tmp, subroot,          \
+      __bst_foreach_safe(node, tmp,                   \
          test_node_first(subroot),                    \
          test_node_next(subroot, node),               \
          typecheck(struct test_node, *(node)),        \
@@ -2370,16 +2369,15 @@ static void test_node_bst_foreach_entry(void)
    struct test_node *subroot = nodes[10];
 
    /* For each_entry unsafe - iterates over containers in inorder */
-   #define test_node_foreach_entry(cur, subroot)                           \
-      __bst_foreach_entry(cur, subroot, struct test_container, bst,        \
-         test_node_first(subroot),                                         \
-         test_node_next(subroot, &(cur)->bst),                             \
-         typecheck(struct test_container, *(cur)),                         \
-         typecheck(typeof_member(struct test_container, bst), *(subroot))  \
+   #define test_node_foreach_entry(cur, subroot, type, member) \
+      __bst_foreach_entry(cur, type, member,                   \
+         test_node_first(subroot),                             \
+         test_node_next(subroot, &(cur)->bst),                 \
+         typecheck(typeof_member(type, member), *(subroot))    \
       )
 
    size_t i = 0;
-   test_node_foreach_entry(cur, subroot)
+   test_node_foreach_entry(cur, subroot, struct test_container, bst)
    {
       TEST_ASSERT_EQUAL(cur, containers + i);
       i++;
@@ -2387,18 +2385,15 @@ static void test_node_bst_foreach_entry(void)
    TEST_ASSERT_EQUAL(i, SIZE);
 
    /* For each_entry_safe - safe to delete current node */
-   #define test_node_foreach_entry_safe(cur, tmp, subroot)                    \
-      __bst_foreach_entry_safe(cur, tmp, subroot, struct test_container, bst, \
-         test_node_first(subroot),                                            \
-         test_node_next(subroot, &cur->bst),                                  \
-         typecheck(struct test_container, *(cur)),                            \
-         typecheck(struct test_container, *(tmp)),                            \
-         typecheck(struct test_node, *test_node_first(subroot)),              \
-         typecheck(typeof_member(struct test_container, bst), *(subroot))     \
+   #define test_node_foreach_entry_safe(cur, tmp, subroot, type, member)   \
+      __bst_foreach_entry_safe(cur, tmp, type, member,                     \
+         test_node_first(subroot),                                         \
+         test_node_next(subroot, &cur->bst),                               \
+         typecheck(typeof_member(type, member), *(subroot))                \
       )
 
    i = 0;
-   test_node_foreach_entry_safe(cur, tmp, subroot)
+   test_node_foreach_entry_safe(cur, tmp, subroot, struct test_container, bst)
    {
       if (i < SIZE - 1)
          TEST_ASSERT_EQUAL(tmp, nodes[i + 1]);  /* tmp should be the next node's bst member */

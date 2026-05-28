@@ -612,7 +612,7 @@
 
 #include <stddef.h>
 
-#define __bst_foreach(node, subroot, start, traverse, ...)              \
+#define __bst_foreach(node, start, traverse, ...)                       \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
       typecheck(typeof(*(node)), *(start)),                             \
@@ -622,7 +622,7 @@
       (node) = (traverse)                                               \
    )
 
-#define __bst_foreach_safe(node, tmp, subroot, start, traverse, ...)    \
+#define __bst_foreach_safe(node, tmp, start, traverse, ...)             \
    for (                                                                \
       __VA_ARGS__, /* caller injected typechecks */                     \
       typecheck(typeof(*(node)), *(tmp)),                               \
@@ -634,7 +634,7 @@
       (node) = (tmp)                                                    \
    )
 
-#define __bst_foreach_entry(cur, subroot, type, member, start, traverse, ...)                   \
+#define __bst_foreach_entry(cur, type, member, start, traverse, ...)                            \
    for (                                                                                        \
       __VA_ARGS__, /* caller injected typechecks */                                             \
       typecheck(type, *(cur)),                                                                  \
@@ -646,7 +646,7 @@
       (cur) = (type *)(traverse)                                                                \
    )
 
-#define __bst_foreach_entry_safe(cur, tmp, subroot, type, member, start, traverse, ...)         \
+#define __bst_foreach_entry_safe(cur, tmp, type, member, start, traverse, ...)                  \
    for (                                                                                        \
       __VA_ARGS__, /* caller injected typechecks */                                             \
       typecheck(type, *(cur)),                                                                  \
@@ -659,7 +659,6 @@
          && (((tmp) = (type *)(traverse)) || 1);                                                \
       (cur) = (tmp)                                                                             \
    )
-
 
 
 
@@ -745,7 +744,7 @@ struct bst_node_linked
 #ifdef NDEBUG
    #define HUZLIB_BST_INTERNAL static __huzlib_inline__
 #else
-   #define HUZLIB_BST_INTERNAL static inline
+   #define HUZLIB_BST_INTERNAL static __huzlib_noinline__
 #endif
 
 
@@ -841,7 +840,7 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_delink_node(struct bst_node *restrict chil
  */
 HUZLIB_BST_INTERNAL void __huzlib_bst_replace_node(struct bst_node *restrict old, struct bst_node *restrict new, struct bst_node **restrict link)
 {
-   __huzlib_assert(old && new && link && (*link == old) && augment_copy);
+   __huzlib_assert(old && new && link && (*link == old));
    *link = new;
    new->__packed_parent = old->__packed_parent;
 }
@@ -967,96 +966,6 @@ HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right(struct bst_node *restrict nod
       set_parent(child->right, node);
 
    node->left = child->right;
-   child->right = node;
-
-   *link = child;
-}
-
-/*
- * __huzlib_bst_rotate_left_left(parent, node, child, link, set_parent)
- * ---------------------------------------------------------------------
- * Double left rotation. parent moves down-right onto node, then node
- * moves down-right onto child. child becomes the new subtree root.
- *
- *     p                             n                             c
- *    / \                          /   \                          / \
- *  (w)  n                       p       c                       n  (z)
- *      / \          ==>        / \     / \        ==>          / \
- *    (x)  c                  (w) (x) (y) (z)                  p  (y)
- *        / \                                                 / \
- *      (y) (z)                                             (w) (x)
- *
- * @parent:     the subtree root rotating down, not NULL
- * @node:       parent's right child, not NULL
- * @child:      node's right child, becomes the new subtree root, not NULL
- * @link:       parent->parent's internal pointer to parent, not NULL
- * @set_parent: parent setter
- *
- * NOTE:
- * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
- * Caller must update them after rotation.
- *    eg: __splay_set_parent(node, child);
- *        __splay_set_parent(parent, node);
- */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_left_left(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
-{
-   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->right == child) && (parent->right == node));
-
-   if (node->left) /* (x) */
-      set_parent(node->left, parent);
-
-   if (child->left) /* (y) */
-      set_parent(child->left, node);
-
-   parent->right = node->left;
-   node->right = child->left;
-
-   node->left = parent;
-   child->left = node;
-
-   *link = child;
-}
-
-/*
- * __huzlib_bst_rotate_right_right(parent, node, child, link, set_parent)
- * -----------------------------------------------------------------------
- * Double right rotation. parent moves down-left onto node, then node
- * moves down-left onto child. child becomes the new subtree root.
- *
- *         p                         n                         c
- *        / \                      /   \                      / \
- *       n  (w)                  c       p                  (z)  n
- *      / \          ==>        / \     / \        ==>          / \
- *     c  (x)                 (z) (y) (x) (w)                 (y)  p
- *    / \                                                         / \
- *  (z) (y)                                                     (x) (w)
- *
- * @parent:     the subtree root rotating down, not NULL
- * @node:       parent's left child, not NULL
- * @child:      node's left child, becomes the new subtree root, not NULL
- * @link:       parent->parent's internal pointer to parent, not NULL
- * @set_parent: parent setter
- *
- * NOTE:
- * Does not update '__packed_parent' fields of 'node', 'parent', and 'child'.
- * Caller must update them after rotation.
- *    eg: __splay_set_parent(node, child);
- *        __splay_set_parent(parent, node);
- */
-HUZLIB_BST_INTERNAL void __huzlib_bst_rotate_right_right(struct bst_node *restrict parent, struct bst_node *restrict node, struct bst_node *restrict child, struct bst_node **restrict link, void (*set_parent)(struct bst_node *restrict, const struct bst_node *restrict))
-{
-   __huzlib_assert(node && child && parent && link && (*link == parent) && (node->left == child) && (parent->left == node));
-
-   if (node->right) /* (x) */
-      set_parent(node->right, parent);
-
-   if (child->right) /* (y) */
-      set_parent(child->right, node);
-
-   parent->left = node->right;
-   node->left = child->right;
-
-   node->right = parent;
    child->right = node;
 
    *link = child;
@@ -1377,7 +1286,6 @@ HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const str
 
 
 
-
 #define bst_node_cast(node, parent_member)         container_of(&(node)->parent_member, struct bst_node, __packed_parent)
 #define bst_node_recast(node, type, parent_member) container_of(&(node)->__packed_parent, type, parent_member)
 
@@ -1436,25 +1344,6 @@ HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const str
       (struct bst_node **)(link),                                                         \
       set_parent                                                                          \
    )
-
-#define __bst_rotate_left_left(parent, node, child, link, set_parent, __parent_member)    \
-   __huzlib_bst_rotate_left_left(                                                         \
-      bst_node_cast(parent, __parent_member),                                             \
-      bst_node_cast(node, __parent_member),                                               \
-      bst_node_cast(child, __parent_member),                                              \
-      (struct bst_node **)(link),                                                         \
-      set_parent                                                                          \
-   )
-
-#define __bst_rotate_right_right(parent, node, child, link, set_parent, __parent_member)  \
-   __huzlib_bst_rotate_right_right(                                                       \
-      bst_node_cast(parent, __parent_member),                                             \
-      bst_node_cast(node, __parent_member),                                               \
-      bst_node_cast(child, __parent_member),                                              \
-      (struct bst_node **)(link),                                                         \
-      set_parent                                                                          \
-   )
-
 
 #define __bst_rotate_left_right(parent, node, child, link, set_parent, __parent_member)   \
    __huzlib_bst_rotate_left_right(                                                        \
@@ -1883,7 +1772,7 @@ struct avl_augment_callbacks
 #else
 
    #define HUZLIB_AVL_TREE_API         __huzlib_noinline__
-   #define HUZLIB_AVL_TREE_API_INLINE  inline
+   #define HUZLIB_AVL_TREE_API_INLINE  __huzlib_noinline__
    #define HUZLIB_AVL_TREE_INTERNAL    static
 
 #endif /* HUZLIB_AVL_TREE_SHARED */
@@ -5699,6 +5588,455 @@ int main(void)
 
 
 #endif /* HUZLIB_AVL_TREE_TEST */
+
+
+/* Part 1: foreach (full tree) */
+
+#define avl_foreach(node, root)                       \
+   __bst_foreach(node,                                \
+      avl_first(root),                                \
+      avl_next(node),                                 \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_cached(node, root)                \
+   __bst_foreach(node,                                \
+      (root)->first,                                  \
+      avl_next(node),                                 \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_root_cached, *(root))      \
+   )
+
+#define avl_foreach_linked(node, root)                \
+   __bst_foreach(node,                                \
+      (root)->first,                                  \
+      (node)->next,                                   \
+      typecheck(struct avl_node_linked, *(node)),     \
+      typecheck(struct avl_root_linked, *(root))      \
+   )
+
+#define avl_foreach_rev(node, root)                   \
+   __bst_foreach(node,                                \
+      avl_last(root),                                 \
+      avl_prev(node),                                 \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_rev_linked(node, root)            \
+   __bst_foreach(node,                                \
+      avl_last(avl_linked(root)),                     \
+      (node)->prev,                                   \
+      typecheck(struct avl_node_linked, *(node)),     \
+      typecheck(struct avl_root_linked, *(root))      \
+   )
+
+#define avl_foreach_preorder(node, root)              \
+   __bst_foreach(node,                                \
+      (root)->node,                                   \
+      avl_preorder_next(node),                        \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_postorder(node, root)             \
+   __bst_foreach(node,                                \
+      avl_postorder_first(root),                      \
+      avl_postorder_next(node),                       \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_safe(node, tmp, root)             \
+   __bst_foreach_safe(node, tmp,                      \
+      avl_first(root),                                \
+      avl_next(node),                                 \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_node, *(tmp)),             \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_rev_safe(node, tmp, root)         \
+   __bst_foreach_safe(node, tmp,                      \
+      avl_last(root),                                 \
+      avl_prev(node),                                 \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_node, *(tmp)),             \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_preorder_safe(node, tmp, root)    \
+   __bst_foreach_safe(node, tmp,                      \
+      (root)->node,                                   \
+      avl_preorder_next(node),                        \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_node, *(tmp)),             \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_postorder_safe(node, tmp, root)   \
+   __bst_foreach_safe(node, tmp,                      \
+      avl_postorder_first(root),                      \
+      avl_postorder_next(node),                       \
+      typecheck(struct avl_node, *(node)),            \
+      typecheck(struct avl_node, *(tmp)),             \
+      typecheck(struct avl_root, *(root))             \
+   )
+
+#define avl_foreach_from(node)                        \
+   __bst_foreach(node,                                \
+      node,                                           \
+      avl_next(node),                                 \
+      typecheck(struct avl_node, *(node))             \
+   )
+
+#define avl_foreach_from_linked(node)                 \
+   __bst_foreach(node,                                \
+      node,                                           \
+      (node)->next,                                   \
+      typecheck(struct avl_node_linked, *(node))      \
+   )
+
+#define avl_foreach_rev_from(node)                    \
+   __bst_foreach(node,                                \
+      node,                                           \
+      avl_prev(node),                                 \
+      typecheck(struct avl_node, *(node))             \
+   )
+
+#define avl_foreach_rev_from_linked(node)             \
+   __bst_foreach(node,                                \
+      node,                                           \
+      (node)->prev,                                   \
+      typecheck(struct avl_node_linked, *(node))      \
+   )
+
+#define avl_foreach_preorder_from(node)               \
+   __bst_foreach(node,                                \
+      node,                                           \
+      avl_preorder_next(node),                        \
+      typecheck(struct avl_node, *(node))             \
+   )
+
+#define avl_foreach_postorder_from(node)              \
+   __bst_foreach(node,                                \
+      node,                                           \
+      avl_postorder_next(node),                       \
+      typecheck(struct avl_node, *(node))             \
+   )
+
+/* Part 2: subtree_foreach */
+
+#define avl_subtree_foreach(node, subroot)                        \
+   __bst_foreach(node,                                            \
+      avl_subtree_first(subroot),                                 \
+      avl_subtree_next((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_rev(node, subroot)                    \
+   __bst_foreach(node,                                            \
+      avl_subtree_last(subroot),                                  \
+      avl_subtree_prev((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_preorder(node, subroot)               \
+   __bst_foreach(node,                                            \
+      (subroot),                                                  \
+      avl_subtree_preorder_next((subroot), (node)),               \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_postorder(node, subroot)              \
+   __bst_foreach(node,                                            \
+      avl_subtree_postorder_first(subroot),                       \
+      avl_subtree_postorder_next((subroot), (node)),              \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_safe(node, tmp, subroot)              \
+   __bst_foreach_safe(node, tmp,                                  \
+      avl_subtree_first(subroot),                                 \
+      avl_subtree_next((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(tmp)),                         \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_rev_safe(node, tmp, subroot)          \
+   __bst_foreach_safe(node, tmp,                                  \
+      avl_subtree_last(subroot),                                  \
+      avl_subtree_prev((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(tmp)),                         \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_preorder_safe(node, tmp, subroot)     \
+   __bst_foreach_safe(node, tmp,                                  \
+      (subroot),                                                  \
+      avl_subtree_preorder_next((subroot), (node)),               \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(tmp)),                         \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_postorder_safe(node, tmp, subroot)    \
+   __bst_foreach_safe(node, tmp,                                  \
+      avl_subtree_postorder_first(subroot),                       \
+      avl_subtree_postorder_next((subroot), (node)),              \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(tmp)),                         \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_from(node, subroot)                   \
+   __bst_foreach(node,                                            \
+      (node),                                                     \
+      avl_subtree_next((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_rev_from(node, subroot)               \
+   __bst_foreach(node,                                            \
+      (node),                                                     \
+      avl_subtree_prev((subroot), (node)),                        \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_preorder_from(node, subroot)          \
+   __bst_foreach(node,                                            \
+      (node),                                                     \
+      avl_subtree_preorder_next((subroot), (node)),               \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+#define avl_subtree_foreach_postorder_from(node, subroot)         \
+   __bst_foreach(node,                                            \
+      (node),                                                     \
+      avl_subtree_postorder_next((subroot), (node)),              \
+      typecheck(struct avl_node, *(node)),                        \
+      typecheck(struct avl_node, *(subroot))                      \
+   )
+
+
+/* Part 3: foreach_entry (full tree) */
+
+#define avl_foreach_entry(cur, type, member, root)                         \
+   __bst_foreach_entry(cur, type, member,                                  \
+      avl_first(root),                                                     \
+      avl_next(&(cur)->member),                                            \
+      typecheck(type, *(cur)),                                             \
+      typecheck(struct avl_root, *(root))                                  \
+   )
+
+#define avl_foreach_entry_cached(cur, type, member, root)                   \
+   __bst_foreach_entry(cur, type, member,                                   \
+      (root)->first,                                                        \
+      avl_next(&(cur)->member),                                             \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_root_cached, *(root))                            \
+   )
+
+#define avl_foreach_entry_rev(cur, type, member, root)                      \
+   __bst_foreach_entry(cur, type, member,                                   \
+      avl_last(root),                                                       \
+      avl_prev(&(cur)->member),                                             \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_preorder(cur, type, member, root)                 \
+   __bst_foreach_entry(cur, type, member,                                   \
+      (root)->node,                                                         \
+      avl_preorder_next(&(cur)->member),                                    \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_postorder(cur, type, member, root)                \
+   __bst_foreach_entry(cur, type, member,                                   \
+      avl_postorder_first(root),                                            \
+      avl_postorder_next(&(cur)->member),                                   \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_safe(cur, tmp, type, member, root)                \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      avl_first(root),                                                      \
+      avl_next(&(cur)->member),                                             \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_rev_safe(cur, tmp, type, member, root)            \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      avl_last(root),                                                       \
+      avl_prev(&(cur)->member),                                             \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_preorder_safe(cur, tmp, type, member, root)       \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      (root)->node,                                                         \
+      avl_preorder_next(&(cur)->member),                                    \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_postorder_safe(cur, tmp, type, member, root)      \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      avl_postorder_first(root),                                            \
+      avl_postorder_next(&(cur)->member),                                   \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_root, *(root))                                   \
+   )
+
+#define avl_foreach_entry_from(cur, type, member)                           \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_next(&(cur)->member),                                             \
+      typecheck(type, *(cur))                                               \
+   )
+
+#define avl_foreach_entry_rev_from(cur, type, member)                       \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_prev(&(cur)->member),                                             \
+      typecheck(type, *(cur))                                               \
+   )
+
+#define avl_foreach_entry_preorder_from(cur, type, member)                  \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_preorder_next(&(cur)->member),                                    \
+      typecheck(type, *(cur))                                               \
+   )
+
+#define avl_foreach_entry_postorder_from(cur, type, member)                 \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_postorder_next(&(cur)->member),                                   \
+      typecheck(type, *(cur))                                               \
+   )
+
+
+/* Part 4: subtree_foreach_entry */
+
+#define avl_subtree_foreach_entry(cur, subroot, type, member)               \
+   __bst_foreach_entry(cur, type, member,                                   \
+      avl_subtree_first(subroot),                                           \
+      avl_subtree_next((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_rev(cur, subroot, type, member)           \
+   __bst_foreach_entry(cur, type, member,                                   \
+      avl_subtree_last(subroot),                                            \
+      avl_subtree_prev((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_preorder(cur, subroot, type, member)      \
+   __bst_foreach_entry(cur, type, member,                                   \
+      (subroot),                                                            \
+      avl_subtree_preorder_next((subroot), &(cur)->member),                 \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_postorder(cur, subroot, type, member)     \
+   __bst_foreach_entry(cur, type, member,                                   \
+      avl_subtree_postorder_first(subroot),                                 \
+      avl_subtree_postorder_next((subroot), &(cur)->member),                \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_safe(cur, tmp, subroot, type, member)     \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      avl_subtree_first(subroot),                                           \
+      avl_subtree_next((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_rev_safe(cur, tmp, subroot, type, member) \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                         \
+      avl_subtree_last(subroot),                                            \
+      avl_subtree_prev((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(type, *(tmp)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_preorder_safe(cur, tmp, subroot, type, member) \
+   __bst_foreach_entry_safe(cur, tmp, type, member,                              \
+      (subroot),                                                                 \
+      avl_subtree_preorder_next((subroot), &(cur)->member),                      \
+      typecheck(type, *(cur)),                                                   \
+      typecheck(type, *(tmp)),                                                   \
+      typecheck(struct avl_node, *(subroot))                                     \
+   )
+
+#define avl_subtree_foreach_entry_postorder_safe(cur, tmp, subroot, type, member)\
+   __bst_foreach_entry_safe(cur, tmp, type, member,                              \
+      avl_subtree_postorder_first(subroot),                                      \
+      avl_subtree_postorder_next((subroot), &(cur)->member),                     \
+      typecheck(type, *(cur)),                                                   \
+      typecheck(type, *(tmp)),                                                   \
+      typecheck(struct avl_node, *(subroot))                                     \
+   )
+
+#define avl_subtree_foreach_entry_from(cur, subroot, type, member)          \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_subtree_next((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_rev_from(cur, subroot, type, member)      \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_subtree_prev((subroot), &(cur)->member),                          \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_preorder_from(cur, subroot, type, member) \
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_subtree_preorder_next((subroot), &(cur)->member),                 \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
+
+#define avl_subtree_foreach_entry_postorder_from(cur, subroot, type, member)\
+   __bst_foreach_entry(cur, type, member,                                   \
+      &(cur)->member,                                                       \
+      avl_subtree_postorder_next((subroot), &(cur)->member),                \
+      typecheck(type, *(cur)),                                              \
+      typecheck(struct avl_node, *(subroot))                                \
+   )
 
 
 #endif /* HUZLIB_AVL_TREE_H */
