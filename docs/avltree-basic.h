@@ -1,3 +1,10 @@
+/*
+ * WARN:
+ * This implementation was created to get an understanding of AVL-tree mechanisms.
+ * I was struggling with rebalance operations and used this to understand it.
+ * So using this code in production is strictly not recommened.
+ * But please refer this to understand how and AVL-tree work
+ */
 #ifndef HUZLIB_AVL_TREE_H
 #define HUZLIB_AVL_TREE_H
 
