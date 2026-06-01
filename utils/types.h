@@ -383,3 +383,48 @@
    SWAP(*__huzuq(__a), *__huzuq(__b)); \
 } while (0)
 #endif
+
+
+
+/*
+ * tmpvalptr(value)
+ * ----------------
+ * Converts an rvalue (literal/expression) or lvalue into a temporary pointer 
+ * by creating an anonymous, inline compound literal array on the stack.
+ *
+ * INTENT:
+ * Standard C does not allow you to take the address of a literal or temporary 
+ * expression (e.g., `&42` or `&(x + 1)` is a compile error). This macro forces 
+ * the compiler to provision a slot on the current stack frame to store the 
+ * value, returning a valid pointer (`typeof(value) *`) to that memory.
+ *
+ * This allows passing values directly to functions that expect pointers 
+ * (like byte-copying serialization or data structure pushes) while maintaining 
+ * strict expression compliance (avoids `do { } while(0)` statement blocks).
+ *
+ * LIFETIME & SAFETY:
+ *    The anonymous array has AUTOMATIC storage duration bound strictly to the 
+ * 
+ * ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`). 
+ *    1. SAFE USE: Passing to a function that reads/copies the data immediately before returning (e.g., `memcpy`, `static_stack_push`).
+ *    2. UNSAFE USE: Storing the pointer or returning it from a function. The memory will become a dangling pointer the moment execution exits the block.
+ *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion within the compound literal array declaration.
+ *
+ *
+ * EXAMPLES:
+ *
+ *    // 1. Passing a literal to a function expecting a const pointer:
+ *    void log_integer(const int *p);
+ *    log_integer(tmpvalptr(42)); // Perfectly safe
+ *
+ *    // 2. Safe immediately-consumed use case:
+ *    static_stack_push(&stack, tmpvalptr(x + 5));
+ *
+ *    // 3. DEADLY UNDEFINED BEHAVIOR (Dangling Pointer):
+ *    int *get_forty_two(void) {
+ *       return tmpvalptr(42); // WRONG: Memory dies at function exit!
+ *    }
+ */
+#ifndef tmpvalptr
+#define tmpvalptr(value) (&((typeof(value)[]) { (value) })[0])
+#endif

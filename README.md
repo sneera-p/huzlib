@@ -244,11 +244,10 @@ STATIC_STACK(float, 64, float_stack);
 
 int main(void)
 {
-    float values[3] = { 3.14f, 2.71f, 92.4f };
-    struct float_stack s = {0};
+    struct float_stack s = STATIC_STACK_INIT(s);
 
-    static_stack_push(&s, &values[0]);
-    static_stack_push(&s, &values[1]);
+    static_stack_push(&s, 3.14f);
+    static_stack_push(&s, 2.71f);
 
     float *top = static_stack_peek(&s);  // → points to 2.71f
     static_stack_pop(&s);

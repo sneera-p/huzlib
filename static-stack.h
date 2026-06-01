@@ -258,6 +258,51 @@
 
 
 /*
+ * tmpvalptr(value)
+ * ----------------
+ * Converts an rvalue (literal/expression) or lvalue into a temporary pointer 
+ * by creating an anonymous, inline compound literal array on the stack.
+ *
+ * INTENT:
+ * Standard C does not allow you to take the address of a literal or temporary 
+ * expression (e.g., `&42` or `&(x + 1)` is a compile error). This macro forces 
+ * the compiler to provision a slot on the current stack frame to store the 
+ * value, returning a valid pointer (`typeof(value) *`) to that memory.
+ *
+ * This allows passing values directly to functions that expect pointers 
+ * (like byte-copying serialization or data structure pushes) while maintaining 
+ * strict expression compliance (avoids `do { } while(0)` statement blocks).
+ *
+ * LIFETIME & SAFETY:
+ *    The anonymous array has AUTOMATIC storage duration bound strictly to the 
+ * 
+ * ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`). 
+ *    1. SAFE USE: Passing to a function that reads/copies the data immediately before returning (e.g., `memcpy`, `static_stack_push`).
+ *    2. UNSAFE USE: Storing the pointer or returning it from a function. The memory will become a dangling pointer the moment execution exits the block.
+ *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion within the compound literal array declaration.
+ *
+ *
+ * EXAMPLES:
+ *
+ *    // 1. Passing a literal to a function expecting a const pointer:
+ *    void log_integer(const int *p);
+ *    log_integer(tmpvalptr(42)); // Perfectly safe
+ *
+ *    // 2. Safe immediately-consumed use case:
+ *    static_stack_push(&stack, tmpvalptr(x + 5));
+ *
+ *    // 3. DEADLY UNDEFINED BEHAVIOR (Dangling Pointer):
+ *    int *get_forty_two(void) {
+ *       return tmpvalptr(42); // WRONG: Memory dies at function exit!
+ *    }
+ */
+#ifndef tmpvalptr
+#define tmpvalptr(value) (&((typeof(value)[]) { (value) })[0])
+#endif
+
+
+
+/*
  * HUZLIB_INLINE_HINTS
  * --------------------------------------
  * Compiler hints for function inlining control.
@@ -512,7 +557,7 @@ struct NAME {                                      \
 #define __static_stack_unit_size(stack)   sizeof(__static_stack_type(stack))
 #define __static_stack_buf_align(stack)   alignof(__static_stack_type(stack))
 #define __static_stack_cap(stack)         (__static_stack_size(stack) / __static_stack_unit_size(stack))
-
+#define __static_stack_enclose(TYPE, new) &(TYPE[]){ (new) }[0]
 
 
 /*
@@ -583,10 +628,10 @@ struct NAME {                                      \
  * When you peek the stack, the macro casts the byte pointer back
  * to whatever type your stack holds:
  *
- *   #define static_stack_peek(stack) (                   \
- *        typeof((stack)->buf[0]) *) __static_stack_peek( \
- *            __static_stack_cast(stack),                 \
- *            sizeof((stack)->buf[0])                     \
+ *   #define static_stack_peek(stack) (                        \
+ *        *(__static_stack_type(stack) *) __static_stack_peek( \
+ *            __static_stack_cast(stack),                      \
+ *            sizeof((stack)->buf[0])                          \
  *   )
  *
  * The caller sees an int*. Or a float*. Or a struct sockaddr*.
@@ -610,21 +655,15 @@ STATIC_STACK(unsigned char, /* empty */, __huzlib_uchar_static_stack);
 #endif /* NDEBUG */
 
 
-extern HUZLIB_STATIC_STACK_API void __static_stack_init(struct __huzlib_uchar_static_stack *stack);
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *stack) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *stack, size_t size) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ size_t __static_stack_len(const struct __huzlib_uchar_static_stack *stack, size_t unit_size) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *stack, size_t unit_size, size_t align) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API void __static_stack_init(struct __huzlib_uchar_static_stack *stack);
 extern HUZLIB_STATIC_STACK_API void __static_stack_clear(struct __huzlib_uchar_static_stack *stack);
 extern HUZLIB_STATIC_STACK_API void __static_stack_push(struct __huzlib_uchar_static_stack *stack, size_t size, size_t unit_size, size_t align, const void *new);
 extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_static_stack *stack, size_t unit_size);
 
-
-#define static_stack_init(stack) (        \
-   __static_stack_init(                   \
-      __static_stack_cast(stack)          \
-   )                                      \
-)
 
 #define static_stack_is_empty(stack) (    \
    __static_stack_is_empty(               \
@@ -647,11 +686,17 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_sta
 )
 
 #define static_stack_peek(stack) (        \
-   (__static_stack_type(stack) *)         \
+   *(__static_stack_type(stack) *)        \
    __static_stack_peek(                   \
       __static_stack_cast(stack),         \
       __static_stack_unit_size(stack),    \
       __static_stack_buf_align(stack)     \
+   )                                      \
+)
+
+#define static_stack_init(stack) (        \
+   __static_stack_init(                   \
+      __static_stack_cast(stack)          \
    )                                      \
 )
 
@@ -667,7 +712,11 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_sta
       __static_stack_size(stack),         \
       __static_stack_unit_size(stack),    \
       __static_stack_buf_align(stack),    \
-      (void *)(new)                       \
+      typecheck_expr(                     \
+         __static_stack_type(stack),      \
+         (new),                           \
+         (void *)tmpvalptr(new)           \
+      )                                   \
    )                                      \
 )
 
@@ -701,13 +750,6 @@ unsigned char *__static_stack_buf_alignup(uintptr_t addr, size_t align) __huzlib
 }
 
 
-HUZLIB_STATIC_STACK_API 
-void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
-{
-   __huzlib_assert(stack);
-   stack->lenb = 0;
-}
-
 HUZLIB_STATIC_STACK_API __huzlib_pure__ 
 bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack) __huzlib_reproducible__
 {
@@ -738,9 +780,17 @@ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict sta
 }
 
 HUZLIB_STATIC_STACK_API 
+void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
+{
+   __huzlib_assert(stack);
+   stack->lenb = 0;
+}
+
+HUZLIB_STATIC_STACK_API 
 void __static_stack_clear(struct __huzlib_uchar_static_stack *restrict stack)
 {
    __huzlib_assert(stack);
+   
    stack->lenb = 0;
 }
 
@@ -774,42 +824,21 @@ void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size
 // void setUp(void) {}
 // void tearDown(void) {}
 
-int main(int argc, char *argv[])
+int main(void)
 {
-   /* Use a global or static to prevent elimination */
-   static STATIC_STACK(int, 4) stack;
-   static int push_count = 0;
+   STATIC_STACK(int, 4) stack = STATIC_STACK_INIT(stack);
 
-   /* Runtime values from command line - compiler can't predict */
-   int a = argc;
-   int b = argc * 2;
-   int c = argc * 3;
+   static_stack_push(&stack, 1);
+   static_stack_push(&stack, 7);
+   static_stack_push(&stack, 2);
+   static_stack_push(&stack, 5);
 
-   /* Initialize (only once) */
-   if (push_count == 0)
-      static_stack_init(&stack);
+   while (!static_stack_is_empty(&stack))
+   {
+      printf("%d\n", static_stack_peek(&stack));
+      static_stack_pop(&stack);
+   }
 
-   /* Push values */
-   static_stack_push(&stack, &a);
-   static_stack_push(&stack, &b);
-   static_stack_push(&stack, &c);
-   push_count += 3;
-
-   /* Read and verify */
-   int *top = static_stack_peek(&stack);
-   printf("Top: %d\n", *top);
-
-   static_stack_pop(&stack);
-   top = static_stack_peek(&stack);
-   printf("Next: %d\n", *top);
-
-   static_stack_pop(&stack);
-   top = static_stack_peek(&stack);
-   printf("Bottom: %d\n", *top);
-
-   /* Prevent optimization by using a global side effect */
-   static volatile int dummy = 0;
-   dummy = push_count;
    return 0;
 }
 
