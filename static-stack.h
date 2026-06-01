@@ -273,13 +273,20 @@
  * (like byte-copying serialization or data structure pushes) while maintaining 
  * strict expression compliance (avoids `do { } while(0)` statement blocks).
  *
+ *
  * LIFETIME & SAFETY:
- *    The anonymous array has AUTOMATIC storage duration bound strictly to the 
- * 
- * ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`). 
- *    1. SAFE USE: Passing to a function that reads/copies the data immediately before returning (e.g., `memcpy`, `static_stack_push`).
- *    2. UNSAFE USE: Storing the pointer or returning it from a function. The memory will become a dangling pointer the moment execution exits the block.
- *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion within the compound literal array declaration.
+ *
+ *    The anonymous array has AUTOMATIC storage duration bound strictly 
+ *    to the ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
+ *
+ *    1. SAFE USE: Passing to a function that reads/copies the data immediately 
+ *       before returning (e.g., `memcpy`, `static_stack_push`).
+ *
+ *    2. UNSAFE USE: Storing the pointer or returning it from a function. 
+ *       The memory will become a dangling pointer the moment execution exits the block.
+ *
+ *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion 
+ *       within the compound literal array declaration.
  *
  *
  * EXAMPLES:
@@ -298,7 +305,64 @@
  */
 #ifndef tmpvalptr
 #define tmpvalptr(value) (&((typeof(value)[]) { (value) })[0])
-#endif
+#endif /* tmpvalptr */
+
+
+
+/*
+ * tmparrptr(TYPE, ...)
+ * -------------------
+ * Converts a comma-separated list of variadic initializers or values into a 
+ * temporary pointer by constructing an anonymous, inline compound literal 
+ * array of type @TYPE on the stack.
+ *
+ * INTENT:
+ * Standard C does not allow you to easily initialize and take the address of 
+ * an inline sequence of elements on the fly without declaring a named local 
+ * array variable first. 
+ *
+ * This macro bypasses that restriction by wrapping the variadic arguments 
+ * (`__VA_ARGS__`) into a C99 compound literal block, returning an explicit 
+ * pointer (`TYPE *`) pointing straight to the first element (index 0) of that 
+ * newly provisioned sequence.
+ *
+ * This is engineered primarily to facilitate multi-element data structure 
+ * pushes (like pushing a temporary slice or multi-value literal chunk) directly 
+ * inside functional expression boundaries, completely avoiding the need for 
+ * `do { } while(0)` statement wrappers.
+ *
+ * LIFETIME & SAFETY:
+ *
+ *    The anonymous array allocation has AUTOMATIC storage duration bound strictly 
+ *    to the nearest ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
+ * 
+ *    1. SAFE USE: Passing the pointer directly to an opaque or internal function 
+ *       that reads/copies the multi-element block immediately before returning 
+ *       (e.g., your internal `__static_stack_push` or `memcpy`).
+ *
+ *    2. UNSAFE USE: Storing the resulting pointer, assigning it to an external 
+ *       struct field, or returning it from a function. The memory holding the array 
+ *       elements will collapse into a dangling pointer the instant execution 
+ *       leaves the curly-brace block it was initialized in.
+ *
+ *    3. SIDE EFFECTS: Each distinct parameter inside the argument list is evaluated 
+ *       exactly ONCE per macro expansion inside the compound literal layout initializer.
+ *
+ * EXAMPLES:
+ *
+ *    // 1. Safely pushing multiple literals into a byte-copying container:
+ *    static_stack_push(&stack, 10, 20, 30, 40); 
+ *    // (Under the hood, this converts the variadic arguments into a temporary 
+ *    // continuous chunk of 4 integers on the stack frame via tmparrptr).
+ *
+ *    // 2. DEADLY UNDEFINED BEHAVIOR (Dangling Slice Reference):
+ *    const int *get_coordinate_chunk(void) {
+ *       return tmparrptr(int, 100, 200, 300); // WRONG: Memory dies at function return!
+ *    }
+ */
+#ifndef tmparrptr
+#define tmparrptr(TYPE, ...) (&((TYPE[]) { __VA_ARGS__ })[0])
+#endif /* tmparrptr */
 
 
 
@@ -499,6 +563,95 @@
 #endif /* __huzlib_memcpy */
 
 
+
+/*
+ * __huzlib_memset(dest, ch, n)
+ * ----------------------------
+ * Fills the first n bytes of the memory area pointed to by dest with the 
+ * constant byte ch, with no undefined behavior.
+ *
+ * Why not just use memset() from <string.h>?
+ * This header aims to be standalone. No libc dependencies.
+ * Some compilers provide __builtin_memset. We use that.
+ * MSVC provides #pragma intrinsic(memset). We use that.
+ * For the rest, we fall back to a portable loop.
+ *
+ * Compiler support:
+ * GCC/Clang/Intel/ARM/ZIG → __builtin_memset (intrinsic, fast)
+ * MSVC                    → #pragma intrinsic(memset) (intrinsic, fast)
+ * Everything else         → portable byte-by-byte loop (slow but works)
+ *
+ * The portable loop:
+ * Cast void* to unsigned char* for byte-by-byte filling.
+ * C standard forbids arithmetic on void*, so we need the casts.
+ * Compilers optimize this loop to memset() or vector initialization 
+ * at -O2 anyway.
+ */
+#ifndef __huzlib_memset
+#if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__)
+
+   #define __huzlib_memset __builtin_memset
+
+#elif defined(_MSC_VER)
+
+   #pragma intrinsic(memset)
+   #define __huzlib_memset memset
+
+#else
+
+   #include <stddef.h>
+
+   static inline void *__huzlib_memset_fallback(void *dest, int ch, size_t n)
+   {
+      unsigned char *d = dest;
+      unsigned char c = (unsigned char)ch;
+
+      while (n--)
+         *d++ = c;
+
+      return dest;
+   }
+
+   #define __huzlib_memset __huzlib_memset_fallback
+
+#endif
+#endif /* __huzlib_memset */
+
+
+
+/*
+ * __huzlib_memalign(ptr, align)
+ * -----------------------------
+ * moves 'ptr' up to the next multiple of 'align'
+ *
+ * @ptr:   memory address to align
+ * @align: alignment required
+ *
+ * Return: aligned address
+ *
+ * NOTE: 'align' must be a power of 2
+ */
+#ifndef __huzlib_memalign
+
+#if !(defined(__requal_expr) && defined(__huzlib_assert))
+   #error "Need __requal_expr && __huzlib_assert"
+#endif
+
+#include <stdint.h>
+
+static inline uintptr_t __huzlib_memalign_impl(const uintptr_t addr, const size_t align)
+{
+   __huzlib_assert((align > 0) && ((align & (align - 1)) == 0));
+   uintptr_t offset = (align - (addr & (align - 1))) & (align - 1);
+   return addr + offset;
+}
+
+#define __huzlib_memalign(ptr, align) \
+   __requal_expr(ptr, typeof(*(ptr)), __huzlib_memalign_impl((uintptr_t)(ptr), align))
+
+#endif /* __huzlib_memalign */
+
+
 #endif /* HUZLIB_STATIC_STACK_INCLUDES */
 
 
@@ -648,83 +801,142 @@ STATIC_STACK(unsigned char, /* empty */, __huzlib_uchar_static_stack);
 #define __static_stack_cast(stack) container_of(&(stack)->lenb, struct __huzlib_uchar_static_stack, lenb)
 
 
-#ifdef NDEBUG
-   #define HUZLIB_STATIC_STACK_API __huzlib_inline__
+
+#if defined(HUZLIB_STATIC_STACK_SHARED)
+
+   #define HUZLIB_STATIC_STACK_API        __huzlib_export__ __huzlib_noinline__
+   #define HUZLIB_STATIC_STACK_INTERNAL   static __huzlib_inline__
+
+#elif defined(NDEBUG)
+
+   #define HUZLIB_STATIC_STACK_API        __huzlib_inline__
+   #define HUZLIB_STATIC_STACK_INTERNAL   static __huzlib_inline__
+
 #else
-   #define HUZLIB_STATIC_STACK_API __huzlib_noinline__
+
+   #define HUZLIB_STATIC_STACK_API        __huzlib_noinline__
+   #define HUZLIB_STATIC_STACK_INTERNAL   static __huzlib_noinline__
+
 #endif /* NDEBUG */
 
 
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *stack) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *stack, size_t size) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API __huzlib_pure__ size_t __static_stack_len(const struct __huzlib_uchar_static_stack *stack, size_t unit_size) __huzlib_reproducible__;
-extern HUZLIB_STATIC_STACK_API __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *stack, size_t unit_size, size_t align) __huzlib_reproducible__;
+extern HUZLIB_STATIC_STACK_API __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *stack, size_t unit_size, size_t buf_align) __huzlib_reproducible__;
 extern HUZLIB_STATIC_STACK_API void __static_stack_init(struct __huzlib_uchar_static_stack *stack);
 extern HUZLIB_STATIC_STACK_API void __static_stack_clear(struct __huzlib_uchar_static_stack *stack);
-extern HUZLIB_STATIC_STACK_API void __static_stack_push(struct __huzlib_uchar_static_stack *stack, size_t size, size_t unit_size, size_t align, const void *new);
-extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_static_stack *stack, size_t unit_size);
+extern HUZLIB_STATIC_STACK_API void __static_stack_clear_scrub(struct __huzlib_uchar_static_stack *stack, size_t buf_align);
+extern HUZLIB_STATIC_STACK_API void __static_stack_push(struct __huzlib_uchar_static_stack *stack, const void *new, size_t push_size, size_t size, size_t buf_align);
+extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_static_stack *stack, size_t pop_size);
+extern HUZLIB_STATIC_STACK_API void __static_stack_pop_scrub(struct __huzlib_uchar_static_stack *stack, size_t pop_size, size_t buf_align);
 
 
-#define static_stack_is_empty(stack) (    \
-   __static_stack_is_empty(               \
-      __static_stack_cast(stack)          \
-   )                                      \
+#define static_stack_is_empty(stack) (          \
+   __static_stack_is_empty(                     \
+      __static_stack_cast(stack)                \
+   )                                            \
 )
 
-#define static_stack_is_full(stack) (     \
-   __static_stack_is_full(                \
-      __static_stack_cast(stack),         \
-      __static_stack_size(stack)          \
-   )                                      \
+#define static_stack_is_full(stack) (           \
+   __static_stack_is_full(                      \
+      __static_stack_cast(stack),               \
+      __static_stack_size(stack)                \
+   )                                            \
 )
 
-#define static_stack_len(stack) (         \
-   __static_stack_len(                    \
-      __static_stack_cast(stack),         \
-      __static_stack_unit_size(stack)     \
-   )                                      \
+#define static_stack_len(stack) (               \
+   __static_stack_len(                          \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack)           \
+   )                                            \
 )
 
-#define static_stack_peek(stack) (        \
-   *(__static_stack_type(stack) *)        \
-   __static_stack_peek(                   \
-      __static_stack_cast(stack),         \
-      __static_stack_unit_size(stack),    \
-      __static_stack_buf_align(stack)     \
-   )                                      \
+#define static_stack_peek(stack) (              \
+   *(__static_stack_type(stack) *)              \
+   __static_stack_peek(                         \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack),          \
+      __static_stack_buf_align(stack)           \
+   )                                            \
 )
 
-#define static_stack_init(stack) (        \
-   __static_stack_init(                   \
-      __static_stack_cast(stack)          \
-   )                                      \
+#define static_stack_init(stack) (              \
+   __static_stack_init(                         \
+      __static_stack_cast(stack)                \
+   )                                            \
 )
 
-#define static_stack_clear(stack) (       \
-   __static_stack_clear(                  \
-      __static_stack_cast(stack)          \
-   )                                      \
+#define static_stack_clear(stack) (             \
+   __static_stack_clear(                        \
+      __static_stack_cast(stack)                \
+   )                                            \
 )
 
-#define static_stack_push(stack, new) (   \
-   __static_stack_push(                   \
-      __static_stack_cast(stack),         \
-      __static_stack_size(stack),         \
-      __static_stack_unit_size(stack),    \
-      __static_stack_buf_align(stack),    \
-      typecheck_expr(                     \
-         __static_stack_type(stack),      \
-         (new),                           \
-         (void *)tmpvalptr(new)           \
-      )                                   \
-   )                                      \
+#define static_stack_clear_scrub(stack) (       \
+   __static_stack_clear_scrub(                  \
+      __static_stack_cast(stack),               \
+      __static_stack_buf_align(stack)           \
+   )                                            \
 )
 
-#define static_stack_pop(stack) (         \
-   __static_stack_pop(                    \
-      __static_stack_cast(stack),         \
-      __static_stack_unit_size(stack)     \
-   )                                      \
+#define static_stack_push(stack, ...) (         \
+   __static_stack_push(                         \
+      __static_stack_cast(stack),               \
+      (void *)tmparrptr(                        \
+         __static_stack_type(stack),            \
+         __VA_ARGS__                            \
+      ),                                        \
+      sizeof((__static_stack_type(stack)[]){    \
+         __VA_ARGS__                            \
+      }),                                       \
+      __static_stack_size(stack),               \
+      __static_stack_buf_align(stack)           \
+   )                                            \
+)
+
+#define static_stack_pushk(stack, new, count) ( \
+   __static_stack_push(                         \
+      __static_stack_cast(stack),               \
+      typecheck_expr(                           \
+         __static_stack_type(stack),            \
+         (new)[0],                              \
+         (void *)(new)                          \
+      ),                                        \
+      __static_stack_unit_size(stack) * count,  \
+      __static_stack_size(stack),               \
+      __static_stack_buf_align(stack)           \
+   )                                            \
+)
+
+#define static_stack_pop(stack) (               \
+   __static_stack_pop(                          \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack)           \
+   )                                            \
+)
+
+#define static_stack_pop_scrub(stack) (         \
+   __static_stack_pop_scrub(                    \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack),          \
+      __static_stack_buf_align(stack)           \
+   )                                            \
+)
+
+#define static_stack_popk(stack, count) (       \
+   __static_stack_pop(                          \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack) * count   \
+   )                                            \
+)
+
+#define static_stack_popk_scrub(stack, count) ( \
+   __static_stack_pop_scrub(                    \
+      __static_stack_cast(stack),               \
+      __static_stack_unit_size(stack) * count,  \
+      __static_stack_buf_align(stack)           \
+   )                                            \
 )
 
 
@@ -734,80 +946,70 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_sta
 #include <stdint.h>
 
 
-#ifdef NDEBUG
-   #define HUZLIB_STATIC_STACK_INTERNAL static __huzlib_inline__
-#else
-   #define HUZLIB_STATIC_STACK_INTERNAL static inline
-#endif /* NDEBUG */
-
-
-HUZLIB_STATIC_STACK_INTERNAL __huzlib_const__
-unsigned char *__static_stack_buf_alignup(uintptr_t addr, size_t align) __huzlib_unsequenced__
-{
-   __huzlib_assert(align > 0 && (align & (align - 1)) == 0);
-   size_t offset = (align - (addr & (align - 1))) & (align - 1);
-   return (unsigned char *)(addr + offset);
-}
-
-
-HUZLIB_STATIC_STACK_API __huzlib_pure__ 
-bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack) __huzlib_reproducible__
+HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack)
 {
    __huzlib_assert(stack);
    return stack->lenb == 0;
 }
 
-HUZLIB_STATIC_STACK_API __huzlib_pure__ 
-bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *restrict stack, size_t size) __huzlib_reproducible__
+HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_full(const struct __huzlib_uchar_static_stack *restrict stack, size_t size)
 {
-   __huzlib_assert(stack);
-   return stack->lenb == size;
+   __huzlib_assert(stack && size > 0);
+   return stack->lenb >= size;
 }
 
-HUZLIB_STATIC_STACK_API __huzlib_pure__ 
-size_t __static_stack_len(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size) __huzlib_reproducible__
+HUZLIB_STATIC_STACK_API __huzlib_pure__ size_t __static_stack_len(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size)
 {
-   __huzlib_assert(stack);
+   __huzlib_assert(stack && unit_size > 0);
    return stack->lenb / unit_size;
 }
 
-HUZLIB_STATIC_STACK_API __huzlib_pure__ 
-void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size, size_t align) __huzlib_reproducible__
+HUZLIB_STATIC_STACK_API __huzlib_pure__ void *__static_stack_peek(const struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size, size_t buf_align)
 {
-   __huzlib_assert(!__static_stack_is_empty(stack));
-   unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
+   __huzlib_assert(stack && !__static_stack_is_empty(stack) && (unit_size > 0) && (buf_align > 0));
+   const unsigned char *restrict aligned = __huzlib_memalign(stack->buf, buf_align);
    return (void *)(aligned + stack->lenb - unit_size);
 }
 
-HUZLIB_STATIC_STACK_API 
-void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
+HUZLIB_STATIC_STACK_API void __static_stack_init(struct __huzlib_uchar_static_stack *restrict stack)
+{
+   __static_stack_clear(stack);
+}
+
+HUZLIB_STATIC_STACK_API void __static_stack_clear(struct __huzlib_uchar_static_stack *restrict stack)
 {
    __huzlib_assert(stack);
    stack->lenb = 0;
 }
 
-HUZLIB_STATIC_STACK_API 
-void __static_stack_clear(struct __huzlib_uchar_static_stack *restrict stack)
+HUZLIB_STATIC_STACK_API void __static_stack_clear_scrub(struct __huzlib_uchar_static_stack *restrict stack, size_t buf_align)
 {
-   __huzlib_assert(stack);
-   
-   stack->lenb = 0;
+   __huzlib_assert(stack && buf_align > 0);
+   unsigned char *restrict aligned = __huzlib_memalign(stack->buf, buf_align);
+   __huzlib_memset(aligned, 0, stack->lenb);
+   __static_stack_clear(stack);
 }
 
-HUZLIB_STATIC_STACK_API 
-void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, size_t size, size_t unit_size, size_t align, const void *restrict new)
+HUZLIB_STATIC_STACK_API void __static_stack_push(struct __huzlib_uchar_static_stack *restrict stack, const void *restrict new, size_t push_size, size_t size, size_t buf_align)
 {
-   __huzlib_assert(!__static_stack_is_full(stack, size) && new);
-   unsigned char *restrict aligned = __static_stack_buf_alignup((uintptr_t)&stack->buf, align);
-   __huzlib_memcpy(aligned + stack->lenb, new, unit_size);
-   stack->lenb += unit_size;
+   __huzlib_assert(stack && new && (push_size > 0) && (size > 0) && (buf_align > 0) && (stack->lenb + push_size <= size));
+   unsigned char *restrict aligned = __huzlib_memalign(stack->buf, buf_align);
+   __huzlib_memcpy(aligned + stack->lenb, new, push_size);
+   stack->lenb += push_size;
 }
 
-HUZLIB_STATIC_STACK_API 
-void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size_t unit_size)
+HUZLIB_STATIC_STACK_API void __static_stack_pop(struct __huzlib_uchar_static_stack *restrict stack, size_t pop_size)
 {
-   __huzlib_assert(!__static_stack_is_empty(stack));
-   stack->lenb -= unit_size;
+   __huzlib_assert(stack && (stack->lenb >= pop_size));
+   stack->lenb -= pop_size;
+}
+
+HUZLIB_STATIC_STACK_API void __static_stack_pop_scrub(struct __huzlib_uchar_static_stack *restrict stack, size_t pop_size, size_t buf_align)
+{
+   __huzlib_assert(buf_align > 0);
+   __static_stack_pop(stack, pop_size);
+   unsigned char *restrict aligned = __huzlib_memalign(stack->buf, buf_align);
+   __huzlib_memset(aligned + stack->lenb, 0, pop_size);
 }
 
 
@@ -828,15 +1030,12 @@ int main(void)
 {
    STATIC_STACK(int, 4) stack = STATIC_STACK_INIT(stack);
 
-   static_stack_push(&stack, 1);
-   static_stack_push(&stack, 7);
-   static_stack_push(&stack, 2);
-   static_stack_push(&stack, 5);
+   static_stack_push(&stack, 2, 5, 4, 1);
 
    while (!static_stack_is_empty(&stack))
    {
       printf("%d\n", static_stack_peek(&stack));
-      static_stack_pop(&stack);
+      static_stack_pop_scrub(&stack);
    }
 
    return 0;
