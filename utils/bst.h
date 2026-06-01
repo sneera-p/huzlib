@@ -213,6 +213,36 @@
 
 
 /*
+ * __requal_expr(ptr, type, expr)
+ * --------------------------------
+ * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
+ *
+ * Branch order is intentional: volatile is checked before const so that
+ * const volatile pointers match the volatile branch, returning volatile type *
+ * with const silently dropped.
+ *
+ * This is the safer default for const volatile because:
+ *   - volatile drop: silently causes missed hardware reads/writes, a library bug
+ *   - const drop:    programmer may write through the pointer, a programmer error
+ *                    the compiler may still catch via other diagnostics
+ *
+ * const volatile is almost exclusively used on memory-mapped hardware registers
+ * which are inherently writable, so dropping const is less dangerous in practice.
+ *
+ * NOTE: To preserve const instead of volatile for const volatile pointers,
+ * move the const branch above the volatile branch.
+ */
+#ifndef __requal_expr
+#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
+   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
+   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
+   default:                   ((type *)(expr))                       \
+)
+#endif /* __requal_expr */
+
+
+
+/*
  * container_of(ptr, type, member)
  * -------------------------------
  * cast a member of a structure out to the containing structure
@@ -265,34 +295,6 @@
 
 #endif
 
-/*
- * __requal_expr(ptr, type, expr)
- * --------------------------------
- * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
- *
- * Branch order is intentional: volatile is checked before const so that
- * const volatile pointers match the volatile branch, returning volatile type *
- * with const silently dropped.
- *
- * This is the safer default for const volatile because:
- *   - volatile drop: silently causes missed hardware reads/writes, a library bug
- *   - const drop:    programmer may write through the pointer, a programmer error
- *                    the compiler may still catch via other diagnostics
- *
- * const volatile is almost exclusively used on memory-mapped hardware registers
- * which are inherently writable, so dropping const is less dangerous in practice.
- *
- * NOTE: To preserve const instead of volatile for const volatile pointers,
- * move the const branch above the volatile branch.
- *
- * WARNING:
- * This macro is the internal implementation and should not be used directly.
- */
-#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
-   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
-   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
-   default:                   ((type *)(expr))                       \
-)
 
 #define container_of(ptr, type, member) \
    __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))

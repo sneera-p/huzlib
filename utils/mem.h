@@ -107,3 +107,37 @@
 
 #endif
 #endif /* __huzlib_memset */
+
+
+
+/*
+ * __huzlib_memalign(ptr, align)
+ * -----------------------------
+ * moves 'ptr' up to the next multiple of 'align'
+ *
+ * @ptr:   memory address to align
+ * @align: alignment required
+ *
+ * Return: aligned address
+ *
+ * NOTE: 'align' must be a power of 2
+ */
+#ifndef __huzlib_memalign
+
+#if !(defined(__requal_expr) && defined(__huzlib_assert))
+   #error "Need __requal_expr && __huzlib_assert"
+#endif
+
+#include <stdint.h>
+
+static inline uintptr_t __huzlib_memalign_impl(const uintptr_t addr, const size_t align)
+{
+   __huzlib_assert((align > 0) && ((align & (align - 1)) == 0));
+   uintptr_t offset = (align - (addr & (align - 1))) & (align - 1);
+   return addr + offset;
+}
+
+#define __huzlib_memalign(ptr, align) \
+   __requal_expr(ptr, typeof(*(ptr)), __huzlib_memalign_impl((uintptr_t)(ptr), align))
+
+#endif /* __huzlib_memalign */

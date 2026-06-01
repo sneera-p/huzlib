@@ -250,6 +250,36 @@
 
 
 /*
+ * __requal_expr(ptr, type, expr)
+ * --------------------------------
+ * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
+ *
+ * Branch order is intentional: volatile is checked before const so that
+ * const volatile pointers match the volatile branch, returning volatile type *
+ * with const silently dropped.
+ *
+ * This is the safer default for const volatile because:
+ *   - volatile drop: silently causes missed hardware reads/writes, a library bug
+ *   - const drop:    programmer may write through the pointer, a programmer error
+ *                    the compiler may still catch via other diagnostics
+ *
+ * const volatile is almost exclusively used on memory-mapped hardware registers
+ * which are inherently writable, so dropping const is less dangerous in practice.
+ *
+ * NOTE: To preserve const instead of volatile for const volatile pointers,
+ * move the const branch above the volatile branch.
+ */
+#ifndef __requal_expr
+#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
+   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
+   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
+   default:                   ((type *)(expr))                       \
+)
+#endif /* __requal_expr */
+
+
+
+/*
  * container_of(ptr, type, member)
  * -------------------------------
  * cast a member of a structure out to the containing structure
@@ -302,34 +332,6 @@
 
 #endif
 
-/*
- * __requal_expr(ptr, type, expr)
- * --------------------------------
- * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
- *
- * Branch order is intentional: volatile is checked before const so that
- * const volatile pointers match the volatile branch, returning volatile type *
- * with const silently dropped.
- *
- * This is the safer default for const volatile because:
- *   - volatile drop: silently causes missed hardware reads/writes, a library bug
- *   - const drop:    programmer may write through the pointer, a programmer error
- *                    the compiler may still catch via other diagnostics
- *
- * const volatile is almost exclusively used on memory-mapped hardware registers
- * which are inherently writable, so dropping const is less dangerous in practice.
- *
- * NOTE: To preserve const instead of volatile for const volatile pointers,
- * move the const branch above the volatile branch.
- *
- * WARNING:
- * This macro is the internal implementation and should not be used directly.
- */
-#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
-   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
-   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
-   default:                   ((type *)(expr))                       \
-)
 
 #define container_of(ptr, type, member) \
    __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))
@@ -402,13 +404,20 @@
  * (like byte-copying serialization or data structure pushes) while maintaining 
  * strict expression compliance (avoids `do { } while(0)` statement blocks).
  *
+ *
  * LIFETIME & SAFETY:
- *    The anonymous array has AUTOMATIC storage duration bound strictly to the 
- * 
- * ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`). 
- *    1. SAFE USE: Passing to a function that reads/copies the data immediately before returning (e.g., `memcpy`, `static_stack_push`).
- *    2. UNSAFE USE: Storing the pointer or returning it from a function. The memory will become a dangling pointer the moment execution exits the block.
- *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion within the compound literal array declaration.
+ *
+ *    The anonymous array has AUTOMATIC storage duration bound strictly 
+ *    to the ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
+ *
+ *    1. SAFE USE: Passing to a function that reads/copies the data immediately 
+ *       before returning (e.g., `memcpy`, `static_stack_push`).
+ *
+ *    2. UNSAFE USE: Storing the pointer or returning it from a function. 
+ *       The memory will become a dangling pointer the moment execution exits the block.
+ *
+ *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion 
+ *       within the compound literal array declaration.
  *
  *
  * EXAMPLES:
@@ -427,4 +436,61 @@
  */
 #ifndef tmpvalptr
 #define tmpvalptr(value) (&((typeof(value)[]) { (value) })[0])
-#endif
+#endif /* tmpvalptr */
+
+
+
+/*
+ * tmparrptr(TYPE, ...)
+ * -------------------
+ * Converts a comma-separated list of variadic initializers or values into a 
+ * temporary pointer by constructing an anonymous, inline compound literal 
+ * array of type @TYPE on the stack.
+ *
+ * INTENT:
+ * Standard C does not allow you to easily initialize and take the address of 
+ * an inline sequence of elements on the fly without declaring a named local 
+ * array variable first. 
+ *
+ * This macro bypasses that restriction by wrapping the variadic arguments 
+ * (`__VA_ARGS__`) into a C99 compound literal block, returning an explicit 
+ * pointer (`TYPE *`) pointing straight to the first element (index 0) of that 
+ * newly provisioned sequence.
+ *
+ * This is engineered primarily to facilitate multi-element data structure 
+ * pushes (like pushing a temporary slice or multi-value literal chunk) directly 
+ * inside functional expression boundaries, completely avoiding the need for 
+ * `do { } while(0)` statement wrappers.
+ *
+ * LIFETIME & SAFETY:
+ *
+ *    The anonymous array allocation has AUTOMATIC storage duration bound strictly 
+ *    to the nearest ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
+ * 
+ *    1. SAFE USE: Passing the pointer directly to an opaque or internal function 
+ *       that reads/copies the multi-element block immediately before returning 
+ *       (e.g., your internal `__static_stack_push` or `memcpy`).
+ *
+ *    2. UNSAFE USE: Storing the resulting pointer, assigning it to an external 
+ *       struct field, or returning it from a function. The memory holding the array 
+ *       elements will collapse into a dangling pointer the instant execution 
+ *       leaves the curly-brace block it was initialized in.
+ *
+ *    3. SIDE EFFECTS: Each distinct parameter inside the argument list is evaluated 
+ *       exactly ONCE per macro expansion inside the compound literal layout initializer.
+ *
+ * EXAMPLES:
+ *
+ *    // 1. Safely pushing multiple literals into a byte-copying container:
+ *    static_stack_push(&stack, 10, 20, 30, 40); 
+ *    // (Under the hood, this converts the variadic arguments into a temporary 
+ *    // continuous chunk of 4 integers on the stack frame via tmparrptr).
+ *
+ *    // 2. DEADLY UNDEFINED BEHAVIOR (Dangling Slice Reference):
+ *    const int *get_coordinate_chunk(void) {
+ *       return tmparrptr(int, 100, 200, 300); // WRONG: Memory dies at function return!
+ *    }
+ */
+#ifndef tmparrptr
+#define tmparrptr(TYPE, ...) (&((TYPE[]) { __VA_ARGS__ })[0])
+#endif /* tmparrptr */
