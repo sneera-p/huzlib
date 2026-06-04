@@ -943,8 +943,6 @@ extern HUZLIB_STATIC_STACK_API void __static_stack_pop_scrub(struct __huzlib_uch
 
 #ifdef HUZLIB_STATIC_STACK_IMPL
 
-#include <stdint.h>
-
 
 HUZLIB_STATIC_STACK_API __huzlib_pure__ bool __static_stack_is_empty(const struct __huzlib_uchar_static_stack *restrict stack)
 {

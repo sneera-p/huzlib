@@ -12,7 +12,7 @@
 **Generic data structures and algorithms for C — no bloat, no templates, no nonsense.**
 
 [![C11](https://img.shields.io/badge/C-C11-blue?style=flat-square)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--2.0-green?style=flat-square)](LICENSE)
 [![Single Header](https://img.shields.io/badge/style-single--header-orange?style=flat-square)](#)
 [![Zero Dependencies](https://img.shields.io/badge/deps-zero-red?style=flat-square)](#)
 
@@ -153,6 +153,79 @@ huzlib/
 │
 └── docs/            — documentation per header
 ```
+
+Every header follows the same internal layout — once you've read one, you've read them all:
+
+```c
+#ifndef HUZLIB_$$_H
+#define HUZLIB_$$_H
+
+    #ifndef HUZLIB_$$_INCLUDES
+    #define HUZLIB_$$_INCLUDES
+        /*
+         * includes
+         * --------
+         * To stay single-header, every dependency is inlined by hand.
+         * The only exceptions are freestanding libc headers:
+         *   <stddef.h>, <stdint.h>, <stdbool.h> ...
+         * These are safe because they exist even in -freestanding mode.
+         *
+         * Non-freestanding libc headers (e.g. <stdio.h>) are guarded:
+         *   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 1)
+         *
+         * Every macro defined here is #ifndef guarded so it never
+         * clobbers a definition the caller already has.
+         */
+    #endif /* HUZLIB_$$_INCLUDES */
+
+    /*
+     * header section
+     * --------------
+     * All public declarations live here, in this order:
+     *   1. type declarations
+     *   2. function declarations
+     *   3. macro translation layer  (the generic call wrappers)
+     */
+
+    #ifdef HUZLIB_$$_IMPL
+        /*
+         * implementation section
+         * ----------------------
+         * Definitions for every declared function, plus any private
+         * helpers that callers should never see or call directly.
+         * Only compiled when HUZLIB_$$_IMPL is defined — once,
+         * in exactly one translation unit.
+         */
+    #endif /* HUZLIB_$$_IMPL */
+
+    #ifdef HUZLIB_$$_TEST
+        #include "pcg_basic.h"
+        #include "unity.h"
+        /*
+         * testing section
+         * ---------------
+         * Self-contained unit tests using UnityTestFramework.
+         * PCG-BASIC drives the random inputs for stress tests.
+         *
+         * Compiled only when HUZLIB_$$_TEST is defined.
+         * int main(void) lives here and returns UnityEnd().
+         */
+    #endif /* HUZLIB_$$_TEST */
+
+    /*
+     * helper macro layer
+     * ------------------
+     * Loop abstractions and iteration helpers that sit on top of the
+     * raw API — so callers never write a raw for-loop over a node pointer.
+     *
+     *   avl_foreach, avl_foreach_entry,
+     *   list_foreach, list_foreach_entry, ...
+     */
+
+#endif /* HUZLIB_$$_H */
+```
+
+`$$` is a placeholder for the header name in all caps — `STATIC_STACK`, `AVLTREE`, `LIST`, etc.
 
 ---
 
@@ -296,17 +369,23 @@ Each binding will wrap the C header interface cleanly so you can use these data 
 
 ## Why Not Just Use C++ / Rust?
 
-Sometimes you can't. Embedded targets, kernel code, legacy codebases, or just personal preference — C is often the only option or the right one. (I know I prefer C over adding libraries built by the idiots ruining Rust)
+Sometimes you can't. Embedded targets, kernel code, legacy codebases, or just personal preference — C is often the only option or the right one.
 
-And when you're writing C, you deserve data structures that are generic, performant, and compact — without reaching for a different language to get them.
+But even when you *can*, there's a deeper reason to stay in C.
 
-That's what huzlib is for.
+C++ templates feel generic. But every instantiation is its own compiled copy. The binary swells quietly — you never asked for five versions of `sort`, but you got them. And that's before you touch virtual functions. A vtable lookup is an indirect call through a pointer. The CPU cannot predict it. The branch predictor stalls. The optimizer goes blind — it cannot inline through a pointer it doesn't know at compile time. You pay for a runtime dispatch you never wanted, on code you thought was static.
+
+Rust is better disciplined, but monomorphization is still monomorphization. `Vec<i32>` and `Vec<f64>` are still two separate blobs of compiled machine code. `dyn Trait` buys you one copy at the cost of — again — a vtable.
+
+huzlib takes neither trade. One compiled function. No copies. No vtables. No hidden indirection. The only thing the CPU sees is a direct call and a byte operation. Everything else is a macro that dissolved at compile time.
+
+**You always know exactly what the machine is doing. That's the point.**
 
 ---
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+GPL-2.0. See [`LICENSE`](LICENSE).
 
 ---
 
