@@ -156,71 +156,72 @@ huzlib/
 
 Every header follows the same internal layout — once you've read one, you've read them all:
 
+
 ```c
 #ifndef HUZLIB_$$_H
 #define HUZLIB_$$_H
 
-    #ifndef HUZLIB_$$_INCLUDES
-    #define HUZLIB_$$_INCLUDES
-        /*
-         * includes
-         * --------
-         * To stay single-header, every dependency is inlined by hand.
-         * The only exceptions are freestanding libc headers:
-         *   <stddef.h>, <stdint.h>, <stdbool.h> ...
-         * These are safe because they exist even in -freestanding mode.
-         *
-         * Non-freestanding libc headers (e.g. <stdio.h>) are guarded:
-         *   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 1)
-         *
-         * Every macro defined here is #ifndef guarded so it never
-         * clobbers a definition the caller already has.
-         */
-    #endif /* HUZLIB_$$_INCLUDES */
+   #ifndef HUZLIB_$$_INCLUDES
+   #define HUZLIB_$$_INCLUDES
+      /*
+       * includes
+       * --------
+       * To stay single-header, every internal dependency from "utils/" (assert.h, hints.h, etc.)
+       * is hand-inlined directly here. The only external inclusions are 
+       * freestanding libc headers (<stddef.h>, <stdint.h>, <stdbool.h>).
+       *
+       * Every macro defined here is #ifndef guarded so it never
+       * clobbers a definition the caller already has.
+       */
+   #endif /* HUZLIB_$$_INCLUDES */
 
-    /*
-     * header section
-     * --------------
-     * All public declarations live here, in this order:
-     *   1. type declarations
-     *   2. function declarations
-     *   3. macro translation layer  (the generic call wrappers)
-     */
+   /*
+    * header section
+    * --------------
+    * All public declarations live here, in this order:
+    * 1. type declarations
+    */
 
-    #ifdef HUZLIB_$$_IMPL
-        /*
-         * implementation section
-         * ----------------------
-         * Definitions for every declared function, plus any private
-         * helpers that callers should never see or call directly.
-         * Only compiled when HUZLIB_$$_IMPL is defined — once,
-         * in exactly one translation unit.
-         */
-    #endif /* HUZLIB_$$_IMPL */
+   #ifndef HUZLIB_$$_INLINE_IMPL
+   #define HUZLIB_$$_INLINE_IMPL
+      /*
+       * inline section
+       * --------------
+       * Small, high-frequency functions (e.g. empty checks, size lookups).
+       * Uses a visibility macro (HUZ_$$_INLINE_API) to flip behavior:
+       * - Standard App / Static build  -> drops as 'static inline'
+       * - Shared Library generation    -> compiles into exported symbols
+       */
+   #endif /* HUZLIB_$$_INLINE_IMPL */
 
-    #ifdef HUZLIB_$$_TEST
-        #include "pcg_basic.h"
-        #include "unity.h"
-        /*
-         * testing section
-         * ---------------
-         * Self-contained unit tests using UnityTestFramework.
-         * PCG-BASIC drives the random inputs for stress tests.
-         *
-         * Compiled only when HUZLIB_$$_TEST is defined.
-         * int main(void) lives here and returns UnityEnd().
-         */
-    #endif /* HUZLIB_$$_TEST */
+   /*
+    * interface & translation section
+    * -------------------------------
+    * 2. function declarations (for heavy, out-of-line implementation functions)
+    * 3. macro translation layer  (the generic call wrappers that route to either
+    *    the inline logic or the heavy implementation functions)
+    */
 
-    /*
-     * helper macro layer
-     * ------------------
-     * Loop abstractions and iteration helpers that sit on top of the
-     * raw API — so callers never write a raw for-loop over a node pointer.
-     *
-     *   avl_foreach, avl_foreach_entry,
-     *   list_foreach, list_foreach_entry, ...
-     */
+   #ifdef HUZLIB_$$_IMPL
+      /*
+       * implementation section
+       * ----------------------
+       * Definitions for every heavy, non-inlined function (e.g. memory scrubbing).
+       * Only compiled when HUZLIB_$$_IMPL is defined — once,
+       * in exactly one translation unit.
+       */
+   #endif /* HUZLIB_$$_IMPL */
+
+   #ifdef HUZLIB_$$_TEST
+      #include "pcg_basic.h"
+      #include "unity.h"
+      /*
+       * testing section
+       * ---------------
+       * Self-contained unit tests using UnityTestFramework.
+       * PCG-BASIC drives the random inputs for stress tests.
+       */
+   #endif /* HUZLIB_$$_TEST */
 
 #endif /* HUZLIB_$$_H */
 ```
@@ -230,48 +231,48 @@ Every header follows the same internal layout — once you've read one, you've r
 ---
 
 ## How to Use It
- 
+
 This is a **single-header library**. No build system. No linking. Just `#include`.
- 
-Two ways to get the implementation into your project:
- 
+
+3 ways to get the implementation into your project:
+
 ---
- 
+
 ### Method 1 — Definition Macro *(the classic stb way)*
 
 The macro to define is always derived from the filename:
- 
+
 ```
 HUZLIB_ + filename in CAPS (hyphens → underscores) + _IMPL
- 
+
 static-stack.h  →  HUZLIB_STATIC_STACK_IMPL
 avltree.h       →  HUZLIB_AVLTREE_IMPL
 list.h          →  HUZLIB_LIST_IMPL
 ```
- 
+
 **In exactly one `.c` file**, define the implementation macro before including:
- 
+
 ```c
 // myapp.c  — do this ONCE across your whole project
 #define HUZLIB_STACK_IMPL
 #include "stack.h"
 ```
- 
+
 **Everywhere else**, just include normally:
- 
+
 ```c
 // other.c
 #include "stack.h"
 ```
- 
+
 No CMake. No configure. No ritual.
- 
+
 ---
- 
+
 ### Method 2 — Direct Compilation *(header as translation unit)*
- 
+
 Don't want a dedicated `.c` file just to flip a macro? Tell the compiler to treat the header *itself* as a C source file using `-x c`, and pass the implementation flag on the command line:
- 
+
 ```sh
 # Compile the header directly into an object file
 $ cc -DHUZLIB_STACK_IMPL -x c -c static-stack.h -o static-stack.o
@@ -284,6 +285,23 @@ $ cc main.c static-stack.o
  
 Both methods produce the same binary. Pick whichever fits your workflow.
  
+---
+
+### Method 3 — Shared Library Compilation *(`.so` / `.dll`)*
+
+If you want to compile `huzlib` as a standalone shared binary (allowing cross-language runtime engines like Python, Zig, or Rust FFI to tap into it), you can explicitly compile it into a shared object.
+
+When doing this, defining `HUZLIB_$$_SHARED` tells the Inline Section to write standard, exportable machine-code symbols directly into the binary layout so external dynamic linkers can locate them by name.
+
+```sh
+# Compile the header directly into a shared library (.so)
+$ cc -DHUZLIB_STATIC_STACK_IMPL -DHUZLIB_STATIC_STACK_SHARED -x c -fPIC -shared static-stack.h -o libhuzstaticstack.so
+
+# Link a C application against your compiled .so
+# (Your C app gets inline performance for fast paths, but binds to the .so for slow paths)
+$ cc main.c -L. -lhuzstaticstack -o app
+```
+
 ---
 
 ### Running the Tests

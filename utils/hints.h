@@ -60,6 +60,7 @@
 
 #endif
 
+
 #if defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
 
    #define __huzlib_const__   __attribute__((const))
@@ -149,10 +150,16 @@
    #define unreachable() __assume(0)
 
 #else
-   #define unreachable() do { for(;;); } while(0)
+   #define unreachable() do {          \
+      if (!(cond)) {                   \
+         volatile int *__huz_trap = 0; \
+         (void)*__huz_trap;            \
+      }                                \
+   } while (0)
 
 #endif
 #endif /* unreachable */
+
 
 
 /*

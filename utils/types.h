@@ -389,108 +389,59 @@
 
 
 /*
- * tmpvalptr(value)
- * ----------------
- * Converts an rvalue (literal/expression) or lvalue into a temporary pointer 
- * by creating an anonymous, inline compound literal array on the stack.
- *
+ * tmpptr(type, ...)
+ * -----------------
  * INTENT:
- * Standard C does not allow you to take the address of a literal or temporary 
- * expression (e.g., `&42` or `&(x + 1)` is a compile error). This macro forces 
- * the compiler to provision a slot on the current stack frame to store the 
- * value, returning a valid pointer (`typeof(value) *`) to that memory.
+ *   Standard C prohibits taking the address of rvalues or temporary expressions
+ *   (e.g., `&42` or `&(x + 1)` is a compile error). This macro materializes one
+ *   or more values into a temporary, stack-allocated array and returns a pointer
+ *   to its first element. It enables clean, expression-style interoperability with
+ *   pointer-expecting APIs without requiring named local variables or statement
+ *   blocks (`do { ... } while(0)`).
  *
- * This allows passing values directly to functions that expect pointers 
- * (like byte-copying serialization or data structure pushes) while maintaining 
- * strict expression compliance (avoids `do { } while(0)` statement blocks).
- *
+ * HOW IT WORKS:
+ *   Leverages C99 compound literals `((type[]){ __VA_ARGS__ })` to create an
+ *   anonymous array with automatic storage duration. Per ISO C semantics, the
+ *   array expression automatically decays to a `type *` pointing to index 0.
+ *   The memory is provisioned in the current stack frame and requires no manual
+ *   cleanup.
  *
  * LIFETIME & SAFETY:
+ *   The underlying array has AUTOMATIC storage duration, strictly bound to the
+ *   nearest enclosing block scope `{ }`.
  *
- *    The anonymous array has AUTOMATIC storage duration bound strictly 
- *    to the ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
+ *   ✓ SAFE USE:
+ *     • Passing directly to functions that read or copy the data immediately
+ *       before returning (e.g., `memcpy`, `stack_push`, `send`, serialization).
+ *     • Inline buffer initialization for immediate consumption.
  *
- *    1. SAFE USE: Passing to a function that reads/copies the data immediately 
- *       before returning (e.g., `memcpy`, `static_stack_push`).
+ *   ✗ UNSAFE USE (Undefined Behavior):
+ *     • Storing the pointer in a variable for later use.
+ *     • Returning the pointer from a function.
+ *     • Assigning to a struct field, global, or heap-allocated memory.
+ *     • Any access that outlives the enclosing `{ }` block → dangling pointer.
  *
- *    2. UNSAFE USE: Storing the pointer or returning it from a function. 
- *       The memory will become a dangling pointer the moment execution exits the block.
- *
- *    3. SIDE EFFECTS: The argument is evaluated exactly ONCE per macro expansion 
- *       within the compound literal array declaration.
- *
- *
- * EXAMPLES:
- *
- *    // 1. Passing a literal to a function expecting a const pointer:
- *    void log_integer(const int *p);
- *    log_integer(tmpvalptr(42)); // Perfectly safe
- *
- *    // 2. Safe immediately-consumed use case:
- *    static_stack_push(&stack, tmpvalptr(x + 5));
- *
- *    // 3. DEADLY UNDEFINED BEHAVIOR (Dangling Pointer):
- *    int *get_forty_two(void) {
- *       return tmpvalptr(42); // WRONG: Memory dies at function exit!
- *    }
- */
-#ifndef tmpvalptr
-#define tmpvalptr(value) (&((typeof(value)[]) { (value) })[0])
-#endif /* tmpvalptr */
-
-
-
-/*
- * tmparrptr(TYPE, ...)
- * -------------------
- * Converts a comma-separated list of variadic initializers or values into a 
- * temporary pointer by constructing an anonymous, inline compound literal 
- * array of type @TYPE on the stack.
- *
- * INTENT:
- * Standard C does not allow you to easily initialize and take the address of 
- * an inline sequence of elements on the fly without declaring a named local 
- * array variable first. 
- *
- * This macro bypasses that restriction by wrapping the variadic arguments 
- * (`__VA_ARGS__`) into a C99 compound literal block, returning an explicit 
- * pointer (`TYPE *`) pointing straight to the first element (index 0) of that 
- * newly provisioned sequence.
- *
- * This is engineered primarily to facilitate multi-element data structure 
- * pushes (like pushing a temporary slice or multi-value literal chunk) directly 
- * inside functional expression boundaries, completely avoiding the need for 
- * `do { } while(0)` statement wrappers.
- *
- * LIFETIME & SAFETY:
- *
- *    The anonymous array allocation has AUTOMATIC storage duration bound strictly 
- *    to the nearest ENCLOSING BLOCK SCOPE (the nearest wrapping `{ }`).
- * 
- *    1. SAFE USE: Passing the pointer directly to an opaque or internal function 
- *       that reads/copies the multi-element block immediately before returning 
- *       (e.g., your internal `__static_stack_push` or `memcpy`).
- *
- *    2. UNSAFE USE: Storing the resulting pointer, assigning it to an external 
- *       struct field, or returning it from a function. The memory holding the array 
- *       elements will collapse into a dangling pointer the instant execution 
- *       leaves the curly-brace block it was initialized in.
- *
- *    3. SIDE EFFECTS: Each distinct parameter inside the argument list is evaluated 
- *       exactly ONCE per macro expansion inside the compound literal layout initializer.
+ * USAGE NOTES:
+ *   • ISO C requires at least one initializer (empty `__VA_ARGS__` fails to compile).
+ *   • Each argument is evaluated exactly once during macro expansion.
+ *   • If a single initializer contains commas (struct literals, comma operators,
+ *     or function-like macro expansions), wrap it in parentheses to prevent it
+ *     from being parsed as multiple array elements.
+ *     Example: `tmpptr(struct point, (struct point){ .x = 1, .y = 2 })`
+ *   • The result decays to `type *` and is fully interchangeable with pointer
+ *     parameters. `void f(type arr[])` and `void f(type *p)` are identical.
  *
  * EXAMPLES:
+ *   void push_bytes(const void *data, size_t len);
  *
- *    // 1. Safely pushing multiple literals into a byte-copying container:
- *    static_stack_push(&stack, 10, 20, 30, 40); 
- *    // (Under the hood, this converts the variadic arguments into a temporary 
- *    // continuous chunk of 4 integers on the stack frame via tmparrptr).
+ *   // ✓ Safe: Consumed immediately
+ *   push_bytes(tmpptr(int, 42), sizeof(int));
+ *   push_bytes(tmpptr(double, 1.0, 2.0, 3.0), 3 * sizeof(double));
  *
- *    // 2. DEADLY UNDEFINED BEHAVIOR (Dangling Slice Reference):
- *    const int *get_coordinate_chunk(void) {
- *       return tmparrptr(int, 100, 200, 300); // WRONG: Memory dies at function return!
- *    }
+ *   // ✗ WRONG: Pointer escapes block scope → Undefined Behavior
+ *   int *p = tmpptr(int, 10);
+ *   return tmpptr(char, 'A');
  */
-#ifndef tmparrptr
-#define tmparrptr(TYPE, ...) (&((TYPE[]) { __VA_ARGS__ })[0])
-#endif /* tmparrptr */
+#ifndef tmpptr
+#define tmpptr(type, ...) ((type[]) { __VA_ARGS__ })
+#endif /* tmpptr */

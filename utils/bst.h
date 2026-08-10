@@ -5,477 +5,9 @@
 #ifndef HUZLIB_BST_INCLUDES
 #define HUZLIB_BST_INCLUDES
 
-/*
- * Use the following compiler detection order in macros to 
- * avoid my ass being riddled with spice trying to find which 
- * one of my braincells forgot to add a compiler and maintain 
- * Human(logn) search time for this particular ass ripping
- *
- * Order:
- *    defined(__INTEL_LLVM_COMPILER)
- *    defined(__INTEL_COMPILER)
- *    defined(__ARMCOMPILER_VERSION)
- *    defined(__ibmxl__)
- *    defined(__xlC__)
- *    defined(__zig__)
- *    defined(__TINYC__)
- *    defined(__POCC__)
- *    defined(__SUNPRO_C)
- *    defined(__SUNPRO_CC)
- *    defined(_MSC_VER)
- *    defined(__clang__)
- *    defined(__GNUC__)
- */
-
-
-#ifndef HUZLIB_INTERNAL_HAS_TYPEOF
-#if (                                           \
-   defined(__INTEL_LLVM_COMPILER) ||            \
-   defined(__INTEL_COMPILER) ||                 \
-   defined(__ARMCOMPILER_VERSION) ||            \
-   defined(__ibmxl__) ||                        \
-   defined(__xlC__) ||                          \
-   defined(__zig__) ||                          \
-   defined(__TINYC__) ||                        \
-   defined(__POCC__) ||                         \
-   defined(__SUNPRO_C) ||                       \
-   defined(__SUNPRO_CC) ||                      \
-   (defined(_MSC_VER) && (_MSC_VER >= 1938)) || \
-   defined(__clang__) ||                        \
-   defined(__GNUC__)                            \
-)
-   #define HUZLIB_INTERNAL_HAS_TYPEOF 1
-#else
-   #define HUZLIB_INTERNAL_HAS_TYPEOF 0
-#endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPEOF */
-
-
-
-#ifndef HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL
-#if (                                                                         \
-   (defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20230000)) || \
-   (defined(__ARMCOMPILER_VERSION) && (__ARMCOMPILER_VERSION >= 130000)) ||   \
-   (defined(_MSC_VER) && (_MSC_VER >= 1938)) ||                               \
-   (defined(__clang__) && (__clang_major__ >= 13)) ||                         \
-   (defined(__GNUC__) && (__GNUC__ >= 11))                                    \
-)
-   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 1
-#else
-   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 0
-#endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL */
-
-
-
-#ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
-#if (                                  \
-   defined(__INTEL_LLVM_COMPILER) ||   \
-   defined(__INTEL_COMPILER) ||        \
-   defined(__ARMCOMPILER_VERSION) ||   \
-   defined(_MSC_VER) ||                \
-   defined(__clang__) ||               \
-   defined(__GNUC__)                   \
-)
-   #define HUZLIB_INTERNAL_HAS_DECLTYPE 1
-#else
-   #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
-#endif
-#endif /* HUZLIB_INTERNAL_HAS_DECLTYPE */
-
-
-
-#ifndef HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE
-#if (                                  \
-   defined(__INTEL_LLVM_COMPILER) ||   \
-   defined(__INTEL_COMPILER) ||        \
-   defined(__ARMCOMPILER_VERSION) ||   \
-   defined(__zig__) ||                 \
-   defined(__clang__) ||               \
-   defined(__GNUC__)                   \
-)
-   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 1
-#else
-   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 0
-#endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE */
-
-
-
-#ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-#if (                                  \
-   defined(__INTEL_LLVM_COMPILER) ||   \
-   defined(__INTEL_COMPILER) ||        \
-   defined(__ARMCOMPILER_VERSION) ||   \
-   defined(__zig__) ||                 \
-   defined(__TINYC__) ||               \
-   defined(__clang__) ||               \
-   defined(__GNUC__)                   \
-)
-   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 1
-#else
-   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
-#endif
-#endif /* HUZLIB_INTERNAL_HAS_STATEMENT_EXPR */
-
-
-
-/* __huzuq(a)
- * -------------------
- * internal cancatation utility used to
- * create unique tmp varaible name
- *
- * WARN:
- * This macro is the internal implementation and should not be used directly.
- */
-#ifndef __huzuq
-#define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
-#define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
-#define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
-#endif /* __huzuq */
-
-
-
-/*
- * typeof(expr)
- * ------------
- * Retrieves the exact type of an expression at compile-time.
- */
-#if (__STDC_VERSION__ <= 201710L) && !defined(typeof)
-#if HUZLIB_INTERNAL_HAS_TYPEOF
-   #define typeof(expr) __typeof__(expr)
-
-#elif HUZLIB_INTERNAL_HAS_DECLTYPE
-   #define typeof(expr) __decltype(expr)
-
-#else
-   #error "Cannot define typeof(expr)"
-
-#endif
-#endif /* typeof */
-
-
-
-/*
- * typeof_member(type, member)
- * ---------------------------
- * Retrieves exact type of type->member
- */
-#ifndef typeof_member
-#define typeof_member(type, member) typeof(((type *)0)->member)
-#endif /* typeof_member */
-
-
-
-/*
- * typecheck(type, expr)
- * ---------------------
- * Validates 'expr' matches 'type'.
- *
- * NOTE:
- * 'type' parameter entered must an unqualified type
- */
-#ifndef typecheck
-#define typecheck(type, expr) ((void)_Generic(  \
-   (expr),                                      \
-   type: 1                                      \
-))
-#endif /* typecheck */
-
-
-
-/* typecheck_member(mtype, vartype, member)
- * -----------------------------------
- * Validated 'vartype->member' matches 'mtype'
- *
- * NOTE:
- * 'mtype' parameter entered must an unqualified type
- */
-#ifndef typecheck_member
-#define typecheck_member(mtype, vartype, member) typecheck(mtype, ((vartype *)0)->member)
-#endif /* typecheck_member */
-
-
-
-/*
- * typecheck_expr(type, var, expr)
- * -------------------------------
- * Validates that 'var' is of 'type', then evaluates 'expr'.
- *
- * Features:
- *    - Qualifier Agnostic:   Accepts type, const type, volatile type, and const volatile type.
- *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
- */
-#ifndef typecheck_expr
-#define typecheck_expr(type, var, expr) ((void)typecheck(type, var), (expr))
-#endif /* typecheck_expr */
-
-
-
-/*
- * __requal_expr(ptr, type, expr)
- * --------------------------------
- * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
- *
- * Branch order is intentional: volatile is checked before const so that
- * const volatile pointers match the volatile branch, returning volatile type *
- * with const silently dropped.
- *
- * This is the safer default for const volatile because:
- *   - volatile drop: silently causes missed hardware reads/writes, a library bug
- *   - const drop:    programmer may write through the pointer, a programmer error
- *                    the compiler may still catch via other diagnostics
- *
- * const volatile is almost exclusively used on memory-mapped hardware registers
- * which are inherently writable, so dropping const is less dangerous in practice.
- *
- * NOTE: To preserve const instead of volatile for const volatile pointers,
- * move the const branch above the volatile branch.
- */
-#ifndef __requal_expr
-#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
-   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
-   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
-   default:                   ((type *)(expr))                       \
-)
-#endif /* __requal_expr */
-
-
-
-/*
- * container_of(ptr, type, member)
- * -------------------------------
- * cast a member of a structure out to the containing structure
- *
- * @ptr:    pointer to member
- * @type:   type of the container struct member is embedded in
- * @member: the name of the member field
- *
- * Return: pointer to the containing structure
- */
-#if !defined(container_of) && (__STDC_VERSION__ <= 202311L) 
-
-/*
- * __container_of_raw(ptr, type, member)
- * --------------------------------------
- * Computes a pointer to the containing structure by subtracting the offset
- * of member from ptr. No type checking is performed.
- *
- * WARNING:
- * This macro is the internal implementation and should not be used directly.
- */
-#include <stddef.h>
-#define __container_of_raw(ptr, type, member) \
-   ((type *)((char *)(ptr) - offsetof(type, member)))
-
-
-/*
- * __container_of_unqual(ptr, type, member)
- * -----------------------------------------
- * Type-checked wrapper around __container_of_raw() that verifies ptr points
- * to the correct member type before performing the offset arithmetic.
- *
- * Returns a bare type * with no CV-qualifiers preserved. Use container_of()
- * which wraps this with __requal_expr() to restore qualifiers on the result.
- *
- * WARNING:
- * This macro is the internal implementation and should not be used directly.
- */
-#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-   #define __container_of_unqual(ptr, type, member) __extension__ ({ \
-      const typeof(((type *)0)->member) *__mcumptr = (ptr);          \
-      __container_of_raw(__mcumptr, type, member);                   \
-   })
-
-#else
-   #define __container_of_unqual(ptr, type, member) typecheck_expr(  \
-      typeof(((type *)0)->member), *(ptr),                           \
-      __container_of_raw(ptr, type, member)                          \
-   )
-
-#endif
-
-
-#define container_of(ptr, type, member) \
-   __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))
-
-#endif /* container_of */
-
-
-
-/*
- * HUZLIB_INLINE_HINTS
- * --------------------------------------
- * Compiler hints for function inlining control.
- * 
- * __huzlib_inline__   - force function to be inlined (small, hot functions)
- * __huzlib_noinline__ - prevent inlining (large functions, error paths)
- */
-#ifndef HUZLIB_INLINE_HINTS
-#define HUZLIB_INLINE_HINTS
-
-#if defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
-
-   #define __huzlib_inline__     __forceinline
-   #define __huzlib_noinline__   __declspec(noinline)
-
-#elif defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
-
-   #define __huzlib_inline__     inline __attribute__((always_inline))
-   #define __huzlib_noinline__   __attribute__((noinline))
-
-#else
-
-   #define __huzlib_inline__     inline
-   #define __huzlib_noinline__
-
-#endif
-
-#endif /* HUZLIB_INLINE_HINTS */
-
-
-
-/*
- * HUZLIB_PURE_HINTS
- * --------------------------------------
- * Function attribute hints for optimization based on side-effect analysis.
- *
- * Append before return type:
- *    __huzlib_const__ - output depends ONLY on input (e.g., math functions)
- *    __huzlib_pure__  - no side effects, may read global memory (e.g., strlen)
- *
- * Append after parameter list:
- *    __huzlib_unsequenced__  - output depends ONLY on input (e.g., math functions)
- *    __huzlib_reproducible__ - no side effects, may read global memory (e.g., strlen)
- *
- * Falls back to empty for unsupported compilers.
- */
-#ifndef HUZLIB_PURE_HINTS
-#define HUZLIB_PURE_HINTS
-
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
-
-   #define __huzlib_unsequenced__  [[unsequenced]]
-   #define __huzlib_reproducible__ [[reproducible]]
-
-#else
-
-   #define __huzlib_unsequenced__
-   #define __huzlib_reproducible__
-
-#endif
-
-#if defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__) || defined(__zig__) || defined(__clang__) || defined(__GNUC__)
-
-   #define __huzlib_const__   __attribute__((const))
-   #define __huzlib_pure__    __attribute__((pure))
-
-#elif defined(__INTEL_COMPILER) || defined(__POCC__) || defined(_MSC_VER)
-
-   #define __huzlib_const__   __declspec(noalias)
-   #define __huzlib_pure__    __declspec(noalias)
-
-#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
-
-   #define __huzlib_const__   _Pragma("no_side_effect")
-   #define __huzlib_pure__    _Pragma("no_side_effect")
-
-#else
-
-   #define __huzlib_const__
-   #define __huzlib_pure__
-
-#endif
-
-#endif /* HUZLIB_PURE_HINTS */
-
-
-
-/*
- * HUZLIB_LIKELY_HINTS
- * --------------------------------------
- * Branch prediction hints to guide compiler optimization.
- * 
- * __huzlib_likely__(x)   - "x" is usually true  (common case)
- * __huzlib_unlikely__(x) - "x" is usually false (error handling)
- * 
- * Example:
- *   if (__huzlib_unlikely__(error)) {
- *       handle_error();  // moved to cold section
- *   }
- * 
- * Falls back to plain expression evaluation for other compilers.
- */
-#ifndef HUZLIB_LIKELY_HINTS
-#define HUZLIB_LIKELY_HINTS
-
-#if defined(__clang__) || defined(__GNUC__) || defined(__INTEL_LLVM_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ibmxl__) || defined(__xlC__)
-
-   #define __huzlib_likely__(x)     __builtin_expect(!!(x), 1)
-   #define __huzlib_unlikely__(x)   __builtin_expect(!!(x), 0)
-
-#else
-
-   #define __huzlib_likely__(x)     (x)
-   #define __huzlib_unlikely__(x)   (x)
-
-#endif
-
-#endif /* HUZLIB_LIKELY_HINTS */
-
-
-
-#ifndef __huzlib_assert
-/*
- * first, we check for NDEBUG, 
- * which means we are compiling under Optimized mode
- */
-#ifdef NDEBUG
-
-   #define __huzlib_assert(cond) ((void)0)
-
-#else
-   /*
-    * now we check for -freestanding, 
-    * which means <assert.h> is not available
-    */
-   #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0)
-
-      #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
-
-         #define __huzlib_assert(cond) do {  \
-            if (!(cond))                     \
-               __builtin_trap();             \
-         } while(0)
-
-      #elif defined(_MSC_VER) || defined(__POCC__)
-
-         #define __huzlib_assert(cond) do {  \
-            if (!(cond))                     \
-               __debugbreak();               \
-         } while(0)
-
-      #else
-
-         #define __huzlib_assert(cond) do {  \
-            if (!(cond)) {                   \
-               volatile int *__huz_fail = 0; \
-               (void)*__huz_fail;            \
-            }                                \
-         } while(0)
-
-      #endif
-
-   #else
-
-      #include <assert.h>
-      #define __huzlib_assert(cond) assert(cond)
-
-   #endif /* __STDC_HOSTED__ */
-
-#endif /* NDEBUG */
-#endif /* __huzlib_assert */
-
+#include "utils/types.h"
+#include "utils/hints.h"
+#include "utils/assert.h"
 
 #endif /* HUZLIB_BST_INCLUDES */
 
@@ -554,6 +86,17 @@
  * We never use cur between step 1 and step 2. Only check if it's NULL.
  * Safe.
  *
+ * Why the "|| 1" here again?
+ *
+ * container_of can return NULL. How? If the node pointer you pass in equals
+ * the offset of 'member' inside the struct. Example: if 'member' is at offset 8
+ * and someone hands you (void *)8, container_of subtracts 8 and gives you NULL.
+ *
+ * Is that likely? No. But the compiler doesn't know that. It sees a possible NULL.
+ * so the whole condition could theorecticaly become false and skip the loop body.
+ *
+ * Therfore we slap a "|| 1" to improve compiler optimization here.
+ *
  *
  * 3. The _entry_safe combo
  * -------------------------------------------------
@@ -561,19 +104,13 @@
  *       && (((cur) = container_of((void *)(cur), type, member)) || 1)
  *       && (((tmp) = (type *)(traverse)) || 1);
  *
- * Both need || 1. Here's why:
+ * Here we combine both tricks from (1) and (2).
  *
- * container_of can return NULL. How? If the node pointer you pass in equals
- * the offset of 'member' inside the struct. Example: if 'member' is at offset 8
- * and someone hands you (void *)8, container_of subtracts 8 and gives you NULL.
- *
- * Is that likely? No. But the compiler doesn't know that. It sees a possible NULL.
- * Without || 1, the whole condition could become false and skip the loop body.
- *
- * traverse might return NULL at the end of walk. Same problem. Same fix.
- *
- * So we slap || 1 on both. The && chain keeps short-circuit working.
- * If cur is NULL, we bail early. Otherwise, both conversions run and we loop.
+ * Why in this specific order? Because then the caller who passes the 'traverse' expression can easily do
+ *    something like "avl_next(&(cur)->member)"
+ *    instead of     "avl_next((struct avl_node *)(cur))"
+ * which will utterly confuse the living shit out of everyone looking at it wondering why we are doing
+ * a unsafe cast from container type to node type
  *
  *
  * Type checks (you won't shoot yourself in the foot)
@@ -644,7 +181,8 @@
 
 
 
-#ifdef HUZLIB_BST_IMPL
+#ifndef HUZLIB_BST_INLINE_IMPL
+#define HUZLIB_BST_INLINE_IMPL
 
 
 /*
@@ -691,7 +229,7 @@
  * bst_node stores parent as a raw uintptr_t at offset 0.
  * This matches the layout of avl_node, rb_node, splay_node exactly.
  *
- * The traversal code gets a small __xxx_parent callback that knows how to
+ * The traversal code gets a small get_parent() callback that knows how to
  * unpack parent for that specific tree type.
  *
  * These callbacks are force_inlined and always called with a concrete function.
@@ -1521,7 +1059,7 @@ HUZLIB_BST_INTERNAL const struct bst_node *__huzlib_bst_postorder_next(const str
    )
 
 
-#endif /* HUZLIB_BST_IMPL */
+#endif /* HUZLIB_BST_INLINE_IMPL */
 
 
 #ifdef HUZLIB_BST_TEST
