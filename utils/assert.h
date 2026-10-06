@@ -1,5 +1,5 @@
 /*
- * __huzlib_assert(cond)
+ * __huz_assert(cond)
  * ---------------------
  * zero-dependency, environment-aware runtime assertion for a boolean condition
  * same as assert() from <assert.h> but work even in -freestanding mode
@@ -22,14 +22,14 @@
  *        and calls `abort()` on failure.
  *
  * EXAMPLES:
- *   __huzlib_assert(ptr != NULL);
- *   __huzlib_assert(index < array_length);
- *   __huzlib_assert(state == EXPECTED_STATE);
+ *   __huz_assert(ptr != NULL);
+ *   __huz_assert(index < array_length);
+ *   __huz_assert(state == EXPECTED_STATE);
  */
-#ifndef __huzlib_assert
+#ifndef __huz_assert
 #ifdef NDEBUG
 
-   #define __huzlib_assert(cond) do {        \
+   #define __huz_assert(cond) do {           \
       ((void)0);                             \
    } while (0)
 
@@ -39,25 +39,25 @@
 
       #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
 
-         #define __huzlib_assert(cond) do {  \
+         #define __huz_assert(cond) do {     \
             if (!(cond))                     \
                __builtin_trap();             \
          } while(0)
 
       #elif defined(_MSC_VER) || defined(__POCC__)
 
-         #define __huzlib_assert(cond) do {  \
+         #define __huz_assert(cond) do {     \
             if (!(cond))                     \
                __debugbreak();               \
          } while (0)
 
       #else
 
-         #define __huzlib_assert(cond) do {  \
-            if (!(cond)) {                   \
-               volatile int *__huz_trap = 0; \
-               (void)*__huz_trap;            \
-            }                                \
+         #define __huz_assert(cond) do {                 \
+            if (!(cond)) {                               \
+               volatile int *__huz_trap_##__LINE__ = 0;  \
+               (void)*__huz_trap_##__LINE__;             \
+            }                                            \
          } while (0)
 
       #endif
@@ -65,11 +65,11 @@
    #else
 
       #include <assert.h>
-      #define __huzlib_assert(cond) do {     \
+      #define __huz_assert(cond) do {        \
          assert(cond);                       \
       } while (0)
 
    #endif /* __STDC_HOSTED__ */
 
 #endif /* NDEBUG */
-#endif /* __huzlib_assert */
+#endif /* __huz_assert */
