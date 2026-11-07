@@ -6,10 +6,9 @@
    defined(huz_typeof) &&           \
    defined(huz_typeof_member) &&    \
    defined(huz_typecheck) &&        \
+   defined(huz_types_equal) &&      \
    defined(huz_container_of) &&     \
    defined(huz_assert) &&           \
-   defined(__huz_pure__) &&         \
-   defined(__huz_reproducible__) && \
    defined(__huz_likely__) &&       \
    defined(__huz_unlikely__) &&     \
    defined(HUZ_INTERNAL_API)        \
@@ -58,14 +57,14 @@
  *    - The start expression returns the expected node type.
  *    - The traversal expression returns the expected node type.
  */
-#define __huz_bst_foreach(node, start, traverse, ...) \
-   for (                                              \
-      __VA_ARGS__, /* caller injected typechecks */   \
-      huz_types_equal(*(node), *(start)),             \
-      huz_types_equal(*(node), *(traverse)),          \
-      (node) = (start);                               \
-      (node) != NULL;                                 \
-      (node) = (traverse)                             \
+#define __huz_bst_foreach(node, start, traverse, ...)                \
+   for (                                                             \
+      __VA_ARGS__, /* caller injected typechecks */                  \
+      huz_types_equal(huz_typeof(*(start)), huz_typeof(*(node))),    \
+      huz_types_equal(huz_typeof(*(traverse)), huz_typeof(*(node))), \
+      (node) = (start);                                              \
+      (node) != NULL;                                                \
+      (node) = (traverse)                                            \
    )
 
 /*
@@ -91,16 +90,16 @@
  * eg:
  *    __huz_bst_foreach_safe(cur, tmp, avl_first(root), avl_prev(cur))
  */
-#define __huz_bst_foreach_safe(node, tmp, start, traverse, ...)   \
-   for (                                                          \
-      __VA_ARGS__, /* caller injected typechecks */               \
-      huz_types_equal(*(node), *(tmp)),                           \
-      huz_types_equal(*(node), *(start)),                         \
-      huz_types_equal(*(node), *(traverse)),                      \
-      (node) = (start);                                           \
-      ((node) != NULL)                                            \
-         && (((tmp) = (traverse)), 1);                            \
-      (node) = (tmp)                                              \
+#define __huz_bst_foreach_safe(node, tmp, start, traverse, ...)      \
+   for (                                                             \
+      __VA_ARGS__, /* caller injected typechecks */                  \
+      huz_types_equal(huz_typeof(*(tmp)), huz_typeof(*(node))),      \
+      huz_types_equal(huz_typeof(*(start)), huz_typeof(*(node))),    \
+      huz_types_equal(huz_typeof(*(traverse)), huz_typeof(*(node))), \
+      (node) = (start);                                              \
+      ((node) != NULL)                                               \
+         && (((tmp) = (traverse)), 1);                               \
+      (node) = (tmp)                                                 \
    )
 
 /*
@@ -245,7 +244,7 @@
  *    - struct rb_node
  *    - struct splay_node
  *
- * Conversion between the concrete node types and bst_node is done
+ * Conversion between the concrete node types and huz_bst_node is done
  * through their shared first member.
  */
 struct huz_bst_node
@@ -267,7 +266,7 @@ struct huz_bst_node
  * list of nodes, for example, to support ordered iteration without
  * repeatedly traversing the tree.
  *
- * The bst_node remains the first member, preserving compatibility
+ * The huz_bst_node remains the first member, preserving compatibility
  * with the shared BST traversal infrastructure.
  */
 struct huz_bst_node_linked
@@ -276,8 +275,10 @@ struct huz_bst_node_linked
    struct huz_bst_node_linked *prev, *next;
 };
 
-#define huz_bst_node_linked_cast(_node, parent_field)          huz_container_of(&(_node)->node, struct huz_bst_node_linked, node)
-#define huz_bst_node_linked_recast(type, _node, parent_field)  huz_container_of(&(_node)->node, type, node)
+#define huz_bst_node_linked_cast(_node, parent_field)  \
+   huz_container_of(huz_bst_node_cast(&(_node)->node, parent_field), struct huz_bst_node_linked, node)
+#define huz_bst_node_linked_recast(type, _node, parent_field)  \
+   huz_container_of(huz_bst_node_recast(huz_typeof_member(type, node), &(_node)->node, parent_field), type, node)
 
 
 
@@ -299,9 +300,8 @@ struct huz_bst_node_linked
  *
  * Return: address of the parent's child pointer that references node.
  */
-HUZ_INTERNAL_API __huz_pure__
-struct huz_bst_node **__huz_bst_parent_ptr(struct huz_bst_node **restrict root_link, const struct huz_bst_node *restrict node, const struct huz_bst_node *restrict parent, bool *restrict isleft)
-__huz_reproducible__
+HUZ_INTERNAL_API
+struct huz_bst_node **__huz_bst_parent_ptr(struct huz_bst_node **restrict root_link, struct huz_bst_node *restrict node, struct huz_bst_node *restrict parent, bool *restrict isleft)
 {
    huz_assert(root_link && node && isleft);
 
@@ -325,8 +325,8 @@ __huz_reproducible__
 #define huz_bst_parent_ptr(root_link, node, parent, isleft, parent_field)  \
    ((huz_typeof(*(node)) **)__huz_bst_parent_ptr(                          \
       (struct huz_bst_node **)(root_link),                                 \
-      huz_bst_node_cast(node, __parent_field),                             \
-      huz_bst_node_cast(parent, __parent_field),                           \
+      huz_bst_node_cast(node, parent_field),                               \
+      huz_bst_node_cast(parent, parent_field),                             \
       isleft                                                               \
    ))
 
@@ -367,7 +367,7 @@ void __huz_bst_delink_node(struct huz_bst_node *restrict child, struct huz_bst_n
       huz_bst_node_cast(child, parent_field),                              \
       huz_bst_node_cast(parent, parent_field),                             \
       (struct huz_bst_node **)(link),                                      \
-      set_parent,                                                          \
+      set_parent                                                           \
    )
 
 
@@ -469,7 +469,7 @@ void __huz_bst_rm_linked(struct huz_bst_node_linked *restrict prev, struct huz_b
       next->prev = prev;
 }
 
-#define huz_rm_add_linked(prev, next, parent_field)   \
+#define huz_bst_rm_linked(prev, next, parent_field)   \
    __huz_bst_rm_linked(                               \
       huz_bst_node_linked_cast(prev, parent_field),   \
       huz_bst_node_linked_cast(next, parent_field)    \
@@ -560,6 +560,15 @@ void __huz_bst_rotate_right(struct huz_bst_node *restrict node, struct huz_bst_n
    *link = child;
 }
 
+#define huz_bst_rotate_right(node, child, link, set_parent, parent_field)  \
+   __huz_bst_rotate_right(                                                 \
+      huz_bst_node_cast(node, parent_field),                               \
+      huz_bst_node_cast(child, parent_field),                              \
+      (struct huz_bst_node **)(link),                                      \
+      set_parent                                                           \
+   )
+
+
 /*
  * __huz_bst_rotate_left_left(parent, node, child, link, set_parent)
  * -----------------------------------------------------------------
@@ -606,6 +615,16 @@ void __huz_bst_rotate_left_left(struct huz_bst_node *restrict parent, struct huz
    *link = child;
 }
 
+#define huz_bst_rotate_left_left(parent, node, child, link, set_parent, parent_field)   \
+   __huz_bst_rotate_left_left(                                                          \
+      huz_bst_node_cast(parent, parent_field),                                          \
+      huz_bst_node_cast(node, parent_field),                                            \
+      huz_bst_node_cast(child, parent_field),                                           \
+      (struct huz_bst_node **)(link),                                                   \
+      set_parent                                                                        \
+   )
+
+
 /*
  * __huz_bst_rotate_right_right(parent, node, child, link, set_parent)
  * -------------------------------------------------------------------
@@ -651,6 +670,16 @@ void __huz_bst_rotate_right_right(struct huz_bst_node *restrict parent, struct h
 
    *link = child;
 }
+
+#define huz_bst_rotate_right_right(parent, node, child, link, set_parent, parent_field) \
+   __huz_bst_rotate_right_right(                                                        \
+      huz_bst_node_cast(parent, parent_field),                                          \
+      huz_bst_node_cast(node, parent_field),                                            \
+      huz_bst_node_cast(child, parent_field),                                           \
+      (struct huz_bst_node **)(link),                                                   \
+      set_parent                                                                        \
+   )
+
 
 /*
  * __huz_bst_rotate_left_right(parent, node, child, link, set_parent)
@@ -699,6 +728,16 @@ void __huz_bst_rotate_left_right(struct huz_bst_node *restrict parent, struct hu
    *link = child;
 }
 
+#define huz_bst_rotate_left_right(parent, node, child, link, set_parent, parent_field)  \
+   __huz_bst_rotate_left_right(                                                         \
+      huz_bst_node_cast(parent, parent_field),                                          \
+      huz_bst_node_cast(node, parent_field),                                            \
+      huz_bst_node_cast(child, parent_field),                                           \
+      (struct huz_bst_node **)(link),                                                   \
+      set_parent                                                                        \
+   )
+
+
 /*
  * __huz_bst_rotate_right_left(parent, node, child, link, set_parent)
  * ------------------------------------------------------------------
@@ -746,6 +785,15 @@ void __huz_bst_rotate_right_left(struct huz_bst_node *restrict parent, struct hu
    *link = child;
 }
 
+#define huz_bst_rotate_right_left(parent, node, child, link, set_parent, parent_field)  \
+   __huz_bst_rotate_right_left(                                                         \
+      huz_bst_node_cast(parent, parent_field),                                          \
+      huz_bst_node_cast(node, parent_field),                                            \
+      huz_bst_node_cast(child, parent_field),                                           \
+      (struct huz_bst_node **)(link),                                                   \
+      set_parent                                                                        \
+   )
+
 
 
 /* ------------------------------------------------------------- */
@@ -754,44 +802,63 @@ void __huz_bst_rotate_right_left(struct huz_bst_node *restrict parent, struct hu
 
 /*
  * __huz_bst_first(node)
- * ------------------------
+ * ---------------------
  * first node in in-order traversal with subtree boundary.
  *
  * @node: sub-tree root node (root->node for full-tree)
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_first(const struct bst_node *restrict node)
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_first(const struct huz_bst_node *restrict node)
 {
-   __huz_assert(node);
+   huz_assert(node);
    while (node->left)
       node = node->left;
    return node;
 }
 
+#define huz_bst_first(node, parent_field)                      \
+   huz_bst_node_recast(                                        \
+      huz_typeof(*(node)),                                     \
+      __huz_bst_first(huz_bst_node_cast(node, parent_field)),  \
+      parent_field                                             \
+   )
+
+
 /*
  * __huz_bst_last(node)
- * -----------------------
+ * --------------------
  * last node in in-order traversal with subtree boundary.
  *
  * @node: sub-tree root node (root->node for full-tree)
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_last(const struct bst_node *restrict node)
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_last(const struct huz_bst_node *restrict node)
 {
-   __huz_assert(node);
+   huz_assert(node);
    while (node->right)
       node = node->right;
    return node;
 }
 
+#define huz_bst_last(node, parent_field)                       \
+   huz_bst_node_recast(                                        \
+      huz_typeof(*(node)),                                     \
+      __huz_bst_last(huz_bst_node_cast(node, parent_field)),   \
+      parent_field                                             \
+   )
+
+
 /*
  * __huz_bst_postorder_first(node)
- * ----------------------------------
+ * -------------------------------
  * first node in post-order traversal with subtree boundary.
  *
  * @node: sub-tree root node (root->node for full-tree)
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_first(const struct bst_node *restrict node)
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_postorder_first(const struct huz_bst_node *restrict node)
 {
-   __huz_assert(node);
+   huz_assert(node);
 
    node = __huz_bst_first(node);
    while (true)
@@ -807,6 +874,13 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_first(const struct b
    }
 }
 
+#define huz_bst_postorder_first(node, parent_field)                     \
+   huz_bst_node_recast(                                                 \
+      huz_typeof(*(node)),                                              \
+      __huz_bst_postorder_first(huz_bst_node_cast(node, parent_field)), \
+      parent_field                                                      \
+   )
+
 
 
 /* -------------------------------------------------------------- */
@@ -815,7 +889,7 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_first(const struct b
 
 /*
  * __huz_bst_next(subroot_parent, node, get_parent)
- * ---------------------------------------------------
+ * ------------------------------------------------
  * In-order successor with subtree boundary.
  *
  * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
@@ -828,9 +902,10 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_first(const struct b
  * The compiler folds bst_parent(subroot) → subroot when subroot is a dereferenced
  * pointer, making this zero-cost for both full-tree & sub-tree use cases.
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_next(const struct huz_bst_node *restrict subroot_parent, const struct huz_bst_node *restrict node, void *(*get_parent)(const uintptr_t))
 {
-   __huz_assert(node && get_parent);
+   huz_assert(node && get_parent);
 
    if (node->right)
    {
@@ -841,7 +916,7 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_next(const struct bst_node *re
    }
    else
    {
-      const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+      const struct huz_bst_node *restrict parent = get_parent(node->__packed_parent);
       while (parent != subroot_parent && node == parent->right)
       {
          node = parent;
@@ -851,9 +926,21 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_next(const struct bst_node *re
    }
 }
 
+#define huz_bst_next(subroot_parent, node, get_parent, parent_field)  \
+   huz_bst_node_recast(                                               \
+      huz_typeof(*(node)),                                            \
+      __huz_bst_next(                                                 \
+         huz_bst_node_cast(subroot_parent, parent_field),             \
+         huz_bst_node_cast(node, parent_field),                       \
+         get_parent                                                   \
+      ),                                                              \
+      parent_field                                                    \
+   )
+
+
 /*
  * __huz_bst_prev(subroot_parent, node, get_parent)
- * ---------------------------------------------------
+ * ------------------------------------------------
  * In-order predecessor with subtree boundary.
  *
  * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
@@ -866,9 +953,10 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_next(const struct bst_node *re
  * The compiler folds bst_parent(subroot) → subroot when subroot is a dereferenced
  * pointer, making this zero-cost for both full-tree & sub-tree use cases.
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_prev(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_prev(const struct huz_bst_node *restrict subroot_parent, const struct huz_bst_node *restrict node, void *(*get_parent)(const uintptr_t))
 {
-   __huz_assert(node && get_parent);
+   huz_assert(node && get_parent);
 
    if (node->left)
    {
@@ -879,7 +967,7 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_prev(const struct bst_node *re
    }
    else
    {
-      const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+      const struct huz_bst_node *restrict parent = get_parent(node->__packed_parent);
       while (parent != subroot_parent && node == parent->left)
       {
          node = parent;
@@ -889,9 +977,21 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_prev(const struct bst_node *re
    }
 }
 
+#define huz_bst_prev(subroot_parent, node, get_parent, parent_field)  \
+   huz_bst_node_recast(                                               \
+      huz_typeof(*(node)),                                            \
+      __huz_bst_prev(                                                 \
+         huz_bst_node_cast(subroot_parent, parent_field),             \
+         huz_bst_node_cast(node, parent_field),                       \
+         get_parent                                                   \
+      ),                                                              \
+      parent_field                                                    \
+   )
+
+
 /*
  * __huz_bst_preorder_next(subroot_parent, node, get_parent)
- * ------------------------------------------------------------
+ * ---------------------------------------------------------
  * Pre-order successor with subtree boundary.
  *
  * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
@@ -908,9 +1008,10 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_prev(const struct bst_node *re
  *   - Leaf            → walk up until finding an ancestor that is a left child
  *                       and has a right child, then return that right child
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_preorder_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_preorder_next(const struct huz_bst_node *restrict subroot_parent, const struct huz_bst_node *restrict node, void *(*get_parent)(const uintptr_t))
 {
-   __huz_assert(node && get_parent);
+   huz_assert(node && get_parent);
 
    if (node->left)
       return node->left;
@@ -921,7 +1022,7 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_preorder_next(const struct bst
    else
       while (true)
       {
-         const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+         const struct huz_bst_node *restrict parent = get_parent(node->__packed_parent);
 
          if (__huz_unlikely__(parent == subroot_parent))
             return NULL;
@@ -934,9 +1035,21 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_preorder_next(const struct bst
       }
 }
 
+#define huz_bst_preorder_next(subroot_parent, node, get_parent, parent_field) \
+   huz_bst_node_recast(                                                       \
+      huz_typeof(*(node)),                                                    \
+      __huz_bst_preorder_next(                                                \
+         huz_bst_node_cast(subroot_parent, parent_field),                     \
+         huz_bst_node_cast(node, parent_field),                               \
+         get_parent                                                           \
+      ),                                                                      \
+      parent_field                                                            \
+   )
+
+
 /*
  * __huz_bst_postorder_next(subroot_parent, node, get_parent)
- * -------------------------------------------------------------
+ * ----------------------------------------------------------
  * Post-order successor with subtree boundary.
  *
  * @subroot_parent: sentinel node (NULL for full tree, bst_parent(subroot) for subtree)
@@ -953,10 +1066,11 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_preorder_next(const struct bst
  *   - Otherwise → parent
  *
  */
-HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_next(const struct bst_node *restrict subroot_parent, const struct bst_node *restrict node, void *(*get_parent)(const uintptr_t))
+HUZ_INTERNAL_API
+const struct huz_bst_node *__huz_bst_postorder_next(const struct huz_bst_node *restrict subroot_parent, const struct huz_bst_node *restrict node, void *(*get_parent)(const uintptr_t))
 {
-   __huz_assert(node && get_parent);
-   const struct bst_node *restrict parent = get_parent(node->__packed_parent);
+   huz_assert(node && get_parent);
+   const struct huz_bst_node *restrict parent = get_parent(node->__packed_parent);
 
    if (__huz_unlikely__(parent == subroot_parent))
       return NULL;
@@ -968,6 +1082,877 @@ HUZ_BST_INTERNAL const struct bst_node *__huz_bst_postorder_next(const struct bs
       return parent;
 }
 
+#define huz_bst_postorder_next(subroot_parent, node, get_parent, parent_field)   \
+   huz_bst_node_recast(                                                          \
+      huz_typeof(*(node)),                                                       \
+      __huz_bst_postorder_next(                                                  \
+         huz_bst_node_cast(subroot_parent, parent_field),                        \
+         huz_bst_node_cast(node, parent_field),                                  \
+         get_parent                                                              \
+      ),                                                                         \
+      parent_field                                                               \
+   )
 
 
 #endif /* HUZ_BST_H */
+
+
+
+
+#ifdef HUZ_BST_TEST
+
+/*
+ * sample test command
+ * ------------
+ * gcc -std=c11 -DHUZ_BST_TEST \
+ *     -iquote utils \
+ *     -Ilib \
+ *     -include utils/types.h \
+ *     -include utils/hints.h \
+ *     -include utils/assert.h \
+ *     -include utils/api.h \
+ *     -x c utils/bst.h \
+ *     -x none lib/*.c \
+ *     -o test
+ */
+
+#include "unity.h"
+#include "pcg_basic.h"
+
+/*
+ * struct mock_node
+ * ----------------
+ * Stand-in for a concrete tree node (avl_node, rb_node, ...).
+ * '__parent' mirrors huz_bst_node's packed parent as the first member.
+ */
+struct mock_node
+{
+   uintptr_t __parent;
+   struct mock_node *left, *right;
+};
+
+/*
+ * struct mock_node_linked
+ * -----------------------
+ * Stand-in for a concrete linked tree node.
+ */
+struct mock_node_linked
+{
+   struct mock_node node;
+   struct mock_node_linked *prev, *next;
+};
+
+
+/*
+ * MOCK_PARENT_SALT
+ * ----------------
+ * Low bits forced on in every packed parent, mimicking the AVL balance /
+ * RB colour bits. Any code path that reads '__packed_parent' raw instead of
+ * going through get_parent() will dereference a misaligned pointer and fail.
+ */
+#define MOCK_PARENT_SALT ((uintptr_t)0x3)
+
+static void *mock_get_parent(const uintptr_t __parent)
+{
+   return (void *)(__parent & ~MOCK_PARENT_SALT);
+}
+
+static void mock_set_parent(struct mock_node *restrict node, const struct mock_node *restrict parent)
+{
+   huz_assert(node);
+   node->__parent = (uintptr_t)parent | MOCK_PARENT_SALT;
+}
+
+static void mock_set_parent_bst(struct huz_bst_node *restrict node, const struct huz_bst_node *restrict parent)
+{
+   mock_set_parent(
+      huz_bst_node_recast(struct mock_node, node, __parent),
+      huz_bst_node_recast(struct mock_node, parent, __parent)
+   );
+}
+
+
+/*
+ * mock_setup(node, left, right, parent)
+ * -------------------------------------
+ * sets up 'node' with children 'left' & 'right' and parent 'parent'
+ *
+ * @node:    mock node
+ * @left:    left child to be set
+ * @right:   right child to be set
+ * @parent:  parent to be set
+ */
+static void mock_setup(struct mock_node *node, struct mock_node *left, struct mock_node *right, struct mock_node *parent)
+{
+   huz_assert(node);
+   node->left = left;
+   node->right = right;
+   mock_set_parent(node, parent);
+}
+
+/*
+ * mock_setup_linked(node, left, right, parent, prev, next)
+ * --------------------------------------------------------
+ * sets up 'node' with children 'left' & 'right', parent 'parent',
+ * and in-order 'prev' and 'next'
+ *
+ * @node:    mock node
+ * @left:    left child to be set
+ * @right:   right child to be set
+ * @parent:  parent to be set
+ * @prev:    in-order predecessor
+ * @next:    in-order successor
+ */
+static void mock_setup_linked(struct mock_node_linked *node, struct mock_node_linked *left, struct mock_node_linked *right, struct mock_node_linked *parent, struct mock_node_linked *prev, struct mock_node_linked *next)
+{
+   huz_assert(node);
+   mock_setup(
+      &node->node,
+      left   ? &left->node   : NULL,
+      right  ? &right->node  : NULL,
+      parent ? &parent->node : NULL
+   );
+   node->next = next;
+   node->prev = prev;
+}
+
+/*
+ * mock_setup_tree17(n)
+ * --------------------
+ * Builds the shared 17-node tree, in-order key == array index:
+ *
+ *                  10
+ *             /          \
+ *           8            13
+ *        /    \        /    \
+ *       4      9     11      14
+ *     /  \             \       \
+ *    0    5             12      16
+ *     \    \                    /
+ *     2     7                 15
+ *    / \   /
+ *   1  3  6
+ */
+#define MOCK_TREE17_SIZE 17
+
+static void mock_setup_tree17(struct mock_node n[MOCK_TREE17_SIZE])
+{
+   mock_setup(n + 10, n + 8,  n + 13, NULL);
+   mock_setup(n + 8,  n + 4,  n + 9,  n + 10);
+   mock_setup(n + 13, n + 11, n + 14, n + 10);
+   mock_setup(n + 4,  n + 0,  n + 5,  n + 8);
+   mock_setup(n + 9,  NULL,   NULL,   n + 8);
+   mock_setup(n + 11, NULL,   n + 12, n + 13);
+   mock_setup(n + 14, NULL,   n + 16, n + 13);
+   mock_setup(n + 0,  NULL,   n + 2,  n + 4);
+   mock_setup(n + 5,  NULL,   n + 7,  n + 4);
+   mock_setup(n + 12, NULL,   NULL,   n + 11);
+   mock_setup(n + 16, n + 15, NULL,   n + 14);
+   mock_setup(n + 2,  n + 1,  n + 3,  n + 0);
+   mock_setup(n + 7,  n + 6,  NULL,   n + 5);
+   mock_setup(n + 15, NULL,   NULL,   n + 16);
+   mock_setup(n + 1,  NULL,   NULL,   n + 2);
+   mock_setup(n + 3,  NULL,   NULL,   n + 2);
+   mock_setup(n + 6,  NULL,   NULL,   n + 7);
+}
+
+#define MOCK_NULL ((struct mock_node *)NULL)
+
+
+void setUp(void) {}
+void tearDown(void) {}
+
+
+
+/* ------------------------------------------------------------- */
+/* ----------------------- helper tests  ----------------------- */
+/* ------------------------------------------------------------- */
+
+static void test_bst_parent_ptr(void)
+{
+   struct mock_node node, parent, *root, **res;
+   bool isleft;
+
+
+   // CASE 1: node is root
+   mock_setup(&node, NULL, NULL, NULL);
+
+   res = huz_bst_parent_ptr(&root, &node, MOCK_NULL, &isleft, __parent);
+   TEST_ASSERT_EQUAL_PTR(&root, res);
+
+
+   // CASE 2: node is left child
+   mock_setup(&node, NULL, NULL, &parent);
+   mock_setup(&parent, &node, NULL, NULL);
+
+   res = huz_bst_parent_ptr(&root, &node, &parent, &isleft, __parent);
+   TEST_ASSERT_EQUAL_PTR(&parent.left, res);
+   TEST_ASSERT_TRUE(isleft);
+
+
+   // CASE 3: node is right child
+   mock_setup(&node, NULL, NULL, &parent);
+   mock_setup(&parent, NULL, &node, NULL);
+
+   res = huz_bst_parent_ptr(&root, &node, &parent, &isleft, __parent);
+   TEST_ASSERT_EQUAL_PTR(&parent.right, res);
+   TEST_ASSERT_FALSE(isleft);
+}
+
+static void test_bst_delink_node(void)
+{
+   struct mock_node node, parent, child, t, u, g;
+
+   /*
+    *      g
+    *     /
+    *    p
+    *     \
+    *      n
+    *     /
+    *    c
+    *   / \
+    *  t   u
+    */
+   mock_setup(&g, &parent, NULL, NULL);
+   mock_setup(&parent, NULL, &node, &g);
+   mock_setup(&node, &child, NULL, &parent);
+   mock_setup(&child, &t, &u, &node);
+   mock_setup(&t, NULL, NULL, &child);
+   mock_setup(&u, NULL, NULL, &child);
+
+   huz_bst_delink_node(&child, &parent, &parent.right, mock_set_parent_bst, __parent);
+
+   TEST_ASSERT_EQUAL_PTR(&child, parent.right);
+   TEST_ASSERT_EQUAL_PTR(&parent, mock_get_parent(child.__parent));
+}
+
+static void test_bst_replace_node(void)
+{
+   struct mock_node node, succ, parent, tmp, w;
+
+
+   /*
+    * CASE 1:
+    *
+    *   p
+    *    \
+    *     n
+    *    / \
+    *  (w)  t
+    *      /
+    *     s
+    */
+   mock_setup(&parent, NULL, &node, NULL);
+   mock_setup(&node, &w, &tmp, &parent);
+   mock_setup(&w, NULL, NULL, &node);
+   mock_setup(&tmp, &succ, NULL, &node);
+   mock_setup(&succ, NULL, NULL, &tmp);
+
+   huz_bst_replace_node(&node, &succ, &parent.right, __parent);
+
+   TEST_ASSERT_EQUAL_PTR(&parent, mock_get_parent(succ.__parent));
+   TEST_ASSERT_EQUAL_PTR(&succ, parent.right);
+
+
+   /*
+    * CASE 2:
+    *
+    *   p
+    *    \
+    *     n
+    *    / \
+    *  (w)  s
+    *        \
+    *         t
+    */
+   mock_setup(&parent, NULL, &node, NULL);
+   mock_setup(&node, &w, &succ, &parent);
+   mock_setup(&w, NULL, NULL, &node);
+   mock_setup(&succ, NULL, &tmp, &node);
+   mock_setup(&tmp, NULL, NULL, &succ);
+
+   huz_bst_replace_node(&node, &succ, &parent.right, __parent);
+
+   TEST_ASSERT_EQUAL_PTR(&parent, mock_get_parent(succ.__parent));
+   TEST_ASSERT_EQUAL_PTR(&succ, parent.right);
+   TEST_ASSERT_EQUAL_PTR(&tmp, succ.right);
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* ----------------------- linked tests  ----------------------- */
+/* ------------------------------------------------------------- */
+
+static void test_bst_add_rm_linked(void)
+{
+   struct mock_node_linked a, b, n;
+
+   /*
+    * TEST ADD:
+    *
+    *   a -- b
+    */
+   mock_setup_linked(&a, NULL, NULL, NULL, NULL, &b);
+   mock_setup_linked(&b, NULL, NULL, NULL, &a, NULL);
+   mock_setup_linked(&n, NULL, NULL, NULL, NULL, NULL);
+
+   huz_bst_add_linked(&n, &a, &b, __parent);
+
+   TEST_ASSERT_EQUAL_PTR(&a, n.prev);
+   TEST_ASSERT_EQUAL_PTR(&b, n.next);
+
+   TEST_ASSERT_EQUAL_PTR(&n, a.next);
+   TEST_ASSERT_NULL(a.prev);
+
+   TEST_ASSERT_NULL(b.next);
+   TEST_ASSERT_EQUAL_PTR(&n, b.prev);
+
+   /*
+    * TEST RM:
+    *
+    *  a -- n -- b
+    */
+   huz_bst_rm_linked(&a, &b, __parent);
+
+   TEST_ASSERT_EQUAL_PTR(&b, a.next);
+   TEST_ASSERT_NULL(a.prev);
+
+   TEST_ASSERT_NULL(b.next);
+   TEST_ASSERT_EQUAL_PTR(&a, b.prev);
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* ----------------------- rotate tests  ----------------------- */
+/* ------------------------------------------------------------- */
+
+static void test_bst_rotate_left(void)
+{
+   /*
+    *  p                p
+    *   \                \
+    *    n                c
+    *   / \              / \
+    *  x   c     =>     n   z
+    *     / \          / \
+    *    y   z        x   y
+    */
+   struct mock_node p, n, c, x, y, z;
+   mock_setup(&p, NULL, &n,   NULL);
+   mock_setup(&n, &x,   &c,   &p);
+   mock_setup(&c, &y,   &z,   &n);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_left(&n, &c, &p.right, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, p.right);
+
+   /* c takes n's place */
+   TEST_ASSERT_EQUAL_PTR(&n, c.left);
+   TEST_ASSERT_EQUAL_PTR(&z, c.right);
+
+   /* n gets c's old left child */
+   TEST_ASSERT_EQUAL_PTR(&x, n.left);
+   TEST_ASSERT_EQUAL_PTR(&y, n.right);
+
+   /* parent pointer of adopted child updated */
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(y.__parent));
+}
+
+static void test_bst_rotate_right(void)
+{
+   /*
+    *         p            p
+    *        /            /
+    *       n            c
+    *      / \          / \
+    *     c   x   =>   z   n
+    *    / \              / \
+    *   z   y            y   x
+    */
+   struct mock_node p, n, c, x, y, z;
+   mock_setup(&p, &n,   NULL, NULL);
+   mock_setup(&n, &c,   &x,   &p);
+   mock_setup(&c, &z,   &y,   &n);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_right(&n, &c, &p.left, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, p.left);
+
+   /* c takes n's place */
+   TEST_ASSERT_EQUAL_PTR(&z, c.left);
+   TEST_ASSERT_EQUAL_PTR(&n, c.right);
+
+   /* n gets c's old right child */
+   TEST_ASSERT_EQUAL_PTR(&y, n.left);
+   TEST_ASSERT_EQUAL_PTR(&x, n.right);
+
+   /* parent pointer of adopted child updated */
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(y.__parent));
+}
+
+static void test_bst_rotate_left_left(void)
+{
+   /*
+    *      g                  g
+    *     /                  /
+    *    p                  c
+    *   / \                / \
+    *  w   n      =>      n   z
+    *     / \            / \
+    *    x   c          p   y
+    *       / \        / \
+    *      y   z      w   x
+    */
+   struct mock_node g, p, n, c, w, x, y, z;
+   mock_setup(&g, &p,   NULL, NULL);
+   mock_setup(&p, &w,   &n,   &g);
+   mock_setup(&n, &x,   &c,   &p);
+   mock_setup(&c, &y,   &z,   &n);
+   mock_setup(&w, NULL, NULL, &p);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_left_left(&p, &n, &c, &g.left, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, g.left);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL_PTR(&n, c.left);
+   TEST_ASSERT_EQUAL_PTR(&z, c.right);
+
+   /* n gets p and y */
+   TEST_ASSERT_EQUAL_PTR(&p, n.left);
+   TEST_ASSERT_EQUAL_PTR(&y, n.right);
+
+   /* p keeps w, gets x */
+   TEST_ASSERT_EQUAL_PTR(&w, p.left);
+   TEST_ASSERT_EQUAL_PTR(&x, p.right);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL_PTR(&p, mock_get_parent(x.__parent));
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(y.__parent));
+}
+
+static void test_bst_rotate_right_right(void)
+{
+   /*
+    *      g                  g
+    *       \                  \
+    *        p                  c
+    *       / \                / \
+    *      n   w      =>      z   n
+    *     / \                    / \
+    *    c   x                  y   p
+    *   / \                        / \
+    *  z   y                      x   w
+    */
+   struct mock_node g, p, n, c, w, x, y, z;
+   mock_setup(&g, NULL, &p,   NULL);
+   mock_setup(&p, &n,   &w,   &g);
+   mock_setup(&n, &c,   &x,   &p);
+   mock_setup(&c, &z,   &y,   &n);
+   mock_setup(&w, NULL, NULL, &p);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_right_right(&p, &n, &c, &g.right, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, g.right);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL_PTR(&z, c.left);
+   TEST_ASSERT_EQUAL_PTR(&n, c.right);
+
+   /* n gets y and p */
+   TEST_ASSERT_EQUAL_PTR(&y, n.left);
+   TEST_ASSERT_EQUAL_PTR(&p, n.right);
+
+   /* p gets x, keeps w */
+   TEST_ASSERT_EQUAL_PTR(&x, p.left);
+   TEST_ASSERT_EQUAL_PTR(&w, p.right);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL_PTR(&p, mock_get_parent(x.__parent));
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(y.__parent));
+}
+
+static void test_bst_rotate_left_right(void)
+{
+   /*
+    *      g                  g
+    *     /                  /
+    *    p                  c
+    *   / \                / \
+    *  n   w      =>      n   p
+    *     / \            / \ / \
+    *    x   c          x  y z  w
+    *       / \
+    *      y   z
+    */
+   struct mock_node g, p, n, c, w, x, y, z;
+   mock_setup(&g, &p,   NULL, NULL);
+   mock_setup(&p, &n,   &w,   &g);
+   mock_setup(&n, &x,   &c,   &p);
+   mock_setup(&c, &y,   &z,   &n);
+   mock_setup(&w, NULL, NULL, &p);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_left_right(&p, &n, &c, &g.left, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, g.left);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL_PTR(&n, c.left);
+   TEST_ASSERT_EQUAL_PTR(&p, c.right);
+
+   /* n gets x and y */
+   TEST_ASSERT_EQUAL_PTR(&x, n.left);
+   TEST_ASSERT_EQUAL_PTR(&y, n.right);
+
+   /* p gets z and w */
+   TEST_ASSERT_EQUAL_PTR(&z, p.left);
+   TEST_ASSERT_EQUAL_PTR(&w, p.right);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(y.__parent));
+   TEST_ASSERT_EQUAL_PTR(&p, mock_get_parent(z.__parent));
+}
+
+static void test_bst_rotate_right_left(void)
+{
+   /*
+    *    g                  g
+    *     \                  \
+    *      p                  c
+    *     / \                / \
+    *    w   n      =>      p   n
+    *       / \            / \ / \
+    *      c   x          w  y z  x
+    *     / \
+    *    y   z
+    */
+   struct mock_node g, p, n, c, w, x, y, z;
+   mock_setup(&g, NULL, &p,   NULL);
+   mock_setup(&p, &w,   &n,   &g);
+   mock_setup(&n, &c,   &x,   &p);
+   mock_setup(&c, &y,   &z,   &n);
+   mock_setup(&w, NULL, NULL, &p);
+   mock_setup(&x, NULL, NULL, &n);
+   mock_setup(&y, NULL, NULL, &c);
+   mock_setup(&z, NULL, NULL, &c);
+
+   huz_bst_rotate_right_left(&p, &n, &c, &g.right, mock_set_parent_bst, __parent);
+
+   /* link updated */
+   TEST_ASSERT_EQUAL_PTR(&c, g.right);
+
+   /* c is new root */
+   TEST_ASSERT_EQUAL_PTR(&p, c.left);
+   TEST_ASSERT_EQUAL_PTR(&n, c.right);
+
+   /* p gets w and y */
+   TEST_ASSERT_EQUAL_PTR(&w, p.left);
+   TEST_ASSERT_EQUAL_PTR(&y, p.right);
+
+   /* n gets z and x */
+   TEST_ASSERT_EQUAL_PTR(&z, n.left);
+   TEST_ASSERT_EQUAL_PTR(&x, n.right);
+
+   /* parent pointers of adopted children updated */
+   TEST_ASSERT_EQUAL_PTR(&p, mock_get_parent(y.__parent));
+   TEST_ASSERT_EQUAL_PTR(&n, mock_get_parent(z.__parent));
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* ----------------------- query tests  ------------------------ */
+/* ------------------------------------------------------------- */
+
+static void test_bst_first_last_postorder_first(void)
+{
+   /*
+    *           7
+    *         /   \
+    *       5       8
+    *     /   \       \
+    *    1     6       9
+    *     \
+    *      3
+    *     / \
+    *    2   4
+    */
+   struct mock_node n1, n2, n3, n4, n5, n6, n7, n8, n9;
+
+   mock_setup(&n7, &n5,  &n8,  NULL);
+   mock_setup(&n5, &n1,  &n6,  &n7);
+   mock_setup(&n8, NULL, &n9,  &n7);
+   mock_setup(&n1, NULL, &n3,  &n5);
+   mock_setup(&n6, NULL, NULL, &n5);
+   mock_setup(&n9, NULL, NULL, &n8);
+   mock_setup(&n3, &n2,  &n4,  &n1);
+   mock_setup(&n2, NULL, NULL, &n3);
+   mock_setup(&n4, NULL, NULL, &n3);
+
+   TEST_ASSERT_EQUAL_PTR(&n1, huz_bst_first(&n7, __parent));
+   TEST_ASSERT_EQUAL_PTR(&n9, huz_bst_last(&n7, __parent));
+   TEST_ASSERT_EQUAL_PTR(&n2, huz_bst_postorder_first(&n7, __parent));
+
+   /* subtree bounded */
+   TEST_ASSERT_EQUAL_PTR(&n2, huz_bst_first(&n3, __parent));
+   TEST_ASSERT_EQUAL_PTR(&n6, huz_bst_last(&n5, __parent));
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* --------------------- traversal tests  ---------------------- */
+/* ------------------------------------------------------------- */
+
+static void test_bst_next_prev(void)
+{
+   struct mock_node n[MOCK_TREE17_SIZE];
+   mock_setup_tree17(n);
+
+   // next
+   for (size_t i = 0; i < MOCK_TREE17_SIZE - 1; i++)
+      TEST_ASSERT_EQUAL_PTR(n + i + 1, huz_bst_next(MOCK_NULL, n + i, mock_get_parent, __parent));
+
+   TEST_ASSERT_NULL(huz_bst_next(MOCK_NULL, n + MOCK_TREE17_SIZE - 1, mock_get_parent, __parent));
+
+   // prev
+   for (size_t i = MOCK_TREE17_SIZE - 1; i > 0; i--)
+      TEST_ASSERT_EQUAL_PTR(n + i - 1, huz_bst_prev(MOCK_NULL, n + i, mock_get_parent, __parent));
+
+   TEST_ASSERT_NULL(huz_bst_prev(MOCK_NULL, n + 0, mock_get_parent, __parent));
+
+   // subtree bounded: subtree rooted at 4 spans [0, 7]
+   struct mock_node *sub_parent = mock_get_parent(n[4].__parent);
+   TEST_ASSERT_NULL(huz_bst_next(sub_parent, n + 7, mock_get_parent, __parent));
+   TEST_ASSERT_NULL(huz_bst_prev(sub_parent, n + 0, mock_get_parent, __parent));
+}
+
+static void test_bst_preorder_next(void)
+{
+   struct mock_node n[MOCK_TREE17_SIZE];
+   mock_setup_tree17(n);
+
+   /* 10,8,4,0,2,1,3,5,7,6,9,13,11,12,14,16,15 */
+   const struct mock_node *preorder[MOCK_TREE17_SIZE] = {
+      n + 10, n + 8,  n + 4, n + 0, n + 2,  n + 1,  n + 3,
+      n + 5,  n + 7,  n + 6, n + 9, n + 13, n + 11, n + 12,
+      n + 14, n + 16, n + 15
+   };
+
+   for (size_t i = 0; i < MOCK_TREE17_SIZE - 1; i++)
+      TEST_ASSERT_EQUAL_PTR(preorder[i + 1], huz_bst_preorder_next(MOCK_NULL, preorder[i], mock_get_parent, __parent));
+
+   TEST_ASSERT_NULL(huz_bst_preorder_next(MOCK_NULL, preorder[MOCK_TREE17_SIZE - 1], mock_get_parent, __parent));
+}
+
+static void test_bst_postorder_next(void)
+{
+   struct mock_node n[MOCK_TREE17_SIZE];
+   mock_setup_tree17(n);
+
+   /* 1,3,2,0,6,7,5,4,9,8,12,11,15,16,14,13,10 */
+   const struct mock_node *postorder[MOCK_TREE17_SIZE] = {
+      n + 1, n + 3, n + 2,  n + 0,  n + 6,  n + 7,  n + 5,  n + 4,
+      n + 9, n + 8, n + 12, n + 11, n + 15, n + 16, n + 14, n + 13, n + 10
+   };
+
+   TEST_ASSERT_EQUAL_PTR(postorder[0], huz_bst_postorder_first(n + 10, __parent));
+
+   for (size_t i = 0; i < MOCK_TREE17_SIZE - 1; i++)
+      TEST_ASSERT_EQUAL_PTR(postorder[i + 1], huz_bst_postorder_next(MOCK_NULL, postorder[i], mock_get_parent, __parent));
+
+   TEST_ASSERT_NULL(huz_bst_postorder_next(MOCK_NULL, postorder[MOCK_TREE17_SIZE - 1], mock_get_parent, __parent));
+}
+
+
+
+/* ------------------------------------------------------------- */
+/* ---------------------- foreach tests  ----------------------- */
+/* ------------------------------------------------------------- */
+
+struct mock_entry
+{
+   int padding[2];        /* forces offsetof(bst) != 0 */
+   struct mock_node bst;
+   int key;
+};
+
+static struct mock_node *mock_first(const struct mock_node *subroot)
+{
+   return (struct mock_node *)huz_bst_first(subroot, __parent);
+}
+
+static struct mock_node *mock_next(const struct mock_node *subroot, const struct mock_node *node)
+{
+   const struct mock_node *subroot_parent = mock_get_parent(subroot->__parent);
+   return (struct mock_node *)huz_bst_next(subroot_parent, node, mock_get_parent, __parent);
+}
+
+static void test_bst_foreach(void)
+{
+   struct mock_node n[MOCK_TREE17_SIZE];
+   mock_setup_tree17(n);
+
+   struct mock_node *node, *tmp, *subroot = n + 10;
+
+   #define mock_foreach(node, subroot)                \
+      __huz_bst_foreach(node,                         \
+         mock_first(subroot),                         \
+         mock_next(subroot, node),                    \
+         huz_typecheck(struct mock_node, *(node))     \
+      )
+
+   size_t i = 0;
+   mock_foreach(node, subroot)
+   {
+      TEST_ASSERT_EQUAL_PTR(n + i, node);
+      i++;
+   }
+   TEST_ASSERT_EQUAL_size_t(MOCK_TREE17_SIZE, i);
+
+   #define mock_foreach_safe(node, tmp, subroot)      \
+      __huz_bst_foreach_safe(node, tmp,               \
+         mock_first(subroot),                         \
+         mock_next(subroot, node),                    \
+         huz_typecheck(struct mock_node, *(node)),    \
+         huz_typecheck(struct mock_node, *(tmp))      \
+      )
+
+   i = 0;
+   mock_foreach_safe(node, tmp, subroot)
+   {
+      if (i < MOCK_TREE17_SIZE - 1)
+         TEST_ASSERT_EQUAL_PTR(n + i + 1, tmp);
+      else
+         TEST_ASSERT_NULL(tmp);
+
+      TEST_ASSERT_EQUAL_PTR(n + i, node);
+      node = NULL; // simulate free()
+      i++;
+   }
+   TEST_ASSERT_EQUAL_size_t(MOCK_TREE17_SIZE, i);
+
+   #undef mock_foreach_safe
+   #undef mock_foreach
+}
+
+static void test_bst_foreach_entry(void)
+{
+   struct mock_entry entries[MOCK_TREE17_SIZE];
+   struct mock_entry *e = entries;
+
+   mock_setup(&e[10].bst, &e[8].bst,  &e[13].bst, NULL);
+   mock_setup(&e[8].bst,  &e[4].bst,  &e[9].bst,  &e[10].bst);
+   mock_setup(&e[13].bst, &e[11].bst, &e[14].bst, &e[10].bst);
+   mock_setup(&e[4].bst,  &e[0].bst,  &e[5].bst,  &e[8].bst);
+   mock_setup(&e[9].bst,  NULL,       NULL,       &e[8].bst);
+   mock_setup(&e[11].bst, NULL,       &e[12].bst, &e[13].bst);
+   mock_setup(&e[14].bst, NULL,       &e[16].bst, &e[13].bst);
+   mock_setup(&e[0].bst,  NULL,       &e[2].bst,  &e[4].bst);
+   mock_setup(&e[5].bst,  NULL,       &e[7].bst,  &e[4].bst);
+   mock_setup(&e[12].bst, NULL,       NULL,       &e[11].bst);
+   mock_setup(&e[16].bst, &e[15].bst, NULL,       &e[14].bst);
+   mock_setup(&e[2].bst,  &e[1].bst,  &e[3].bst,  &e[0].bst);
+   mock_setup(&e[7].bst,  &e[6].bst,  NULL,       &e[5].bst);
+   mock_setup(&e[15].bst, NULL,       NULL,       &e[16].bst);
+   mock_setup(&e[1].bst,  NULL,       NULL,       &e[2].bst);
+   mock_setup(&e[3].bst,  NULL,       NULL,       &e[2].bst);
+   mock_setup(&e[6].bst,  NULL,       NULL,       &e[7].bst);
+
+   struct mock_entry *cur, *tmp;
+   struct mock_node *subroot = &e[10].bst;
+
+   #define mock_foreach_entry(cur, subroot, type, member)            \
+      __huz_bst_foreach_entry(cur, type, member,                     \
+         mock_first(subroot),                                        \
+         mock_next(subroot, &(cur)->member),                         \
+         huz_typecheck(huz_typeof_member(type, member), *(subroot))  \
+      )
+
+   size_t i = 0;
+   mock_foreach_entry(cur, subroot, struct mock_entry, bst)
+   {
+      TEST_ASSERT_EQUAL_PTR(e + i, cur);
+      i++;
+   }
+   TEST_ASSERT_EQUAL_size_t(MOCK_TREE17_SIZE, i);
+
+   #define mock_foreach_entry_safe(cur, tmp, subroot, type, member)  \
+      __huz_bst_foreach_entry_safe(cur, tmp, type, member,           \
+         mock_first(subroot),                                        \
+         mock_next(subroot, &(cur)->member),                         \
+         huz_typecheck(huz_typeof_member(type, member), *(subroot))  \
+      )
+
+   i = 0;
+   mock_foreach_entry_safe(cur, tmp, subroot, struct mock_entry, bst)
+   {
+      /* tmp holds the next *node* address, converted on the next iteration */
+      if (i < MOCK_TREE17_SIZE - 1)
+         TEST_ASSERT_EQUAL_PTR(&e[i + 1].bst, tmp);
+      else
+         TEST_ASSERT_NULL(tmp);
+
+      TEST_ASSERT_EQUAL_PTR(e + i, cur);
+      cur = NULL; // simulate free()
+      i++;
+   }
+   TEST_ASSERT_EQUAL_size_t(MOCK_TREE17_SIZE, i);
+
+   #undef mock_foreach_entry_safe
+   #undef mock_foreach_entry
+}
+
+
+
+int main(void)
+{
+   UnityBegin("test/bst.h");
+
+   RUN_TEST(test_bst_parent_ptr);
+   RUN_TEST(test_bst_delink_node);
+   RUN_TEST(test_bst_replace_node);
+   RUN_TEST(test_bst_add_rm_linked);
+
+   RUN_TEST(test_bst_rotate_left);
+   RUN_TEST(test_bst_rotate_right);
+   RUN_TEST(test_bst_rotate_left_left);
+   RUN_TEST(test_bst_rotate_right_right);
+   RUN_TEST(test_bst_rotate_left_right);
+   RUN_TEST(test_bst_rotate_right_left);
+
+   RUN_TEST(test_bst_first_last_postorder_first);
+   RUN_TEST(test_bst_next_prev);
+   RUN_TEST(test_bst_preorder_next);
+   RUN_TEST(test_bst_postorder_next);
+
+   RUN_TEST(test_bst_foreach);
+   RUN_TEST(test_bst_foreach_entry);
+
+   return UnityEnd();
+}
+
+#endif /* HUZ_BST_TEST */

@@ -99,13 +99,15 @@ Every header follows the same internal layout — once you've read one, you've r
        * Uses a visibility macro (HUZ_$$_INLINE_API) to flip behavior:
        * - Standard App / Static build  -> drops as 'static inline'
        * - Shared Library generation    -> compiles into exported symbols
+       * The macro translation layer is right below each function
        */
    #endif /* HUZ_$$_INLINE */
 
    /*
     * interface section
     * -----------------
-    * function declarations (for heavy, out-of-line implementation functions)
+    * Function declarations (for heavy, out-of-line implementation functions)
+    * The macro translation layer is right below each function
     */
 
    #ifdef HUZ_$$_IMPL
@@ -117,13 +119,6 @@ Every header follows the same internal layout — once you've read one, you've r
        * in exactly one translation unit.
        */
    #endif /* HUZ_$$_IMPL */
-
-   /*
-    * translation section
-    * -------------------
-    * macro translation layer  (the generic call wrappers that route
-    * to either the inline logic or the heavy implementation functions)
-    */
 
    #ifdef HUZ_$$_TEST
       #include "pcg_basic.h"
