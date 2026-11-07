@@ -22,6 +22,15 @@
 
 ---
 
+> [!IMPORTANT]
+> **Canonical repository:** [Codeberg](https://codeberg.org/USERNAME/huzlib)
+>
+> The GitHub repository is a read-only mirror, automatically synchronized from Codeberg.
+>
+> **Pull requests from GitHub are welcome!** GitHub PRs are accepted for convenience, but all contributions are reviewed and merged into the canonical Codeberg repository. Please do not expect changes made directly to this mirror to be preserved.
+
+---
+
 ## The Problem
 
 You write a stack for `int`. Then for `float`. Then for `struct Point`.
