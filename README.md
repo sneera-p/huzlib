@@ -51,11 +51,11 @@ huzlib/
 ├── bit.h            — bit manipulation utilities
 │
 ├── utils/
+│   ├── api.h        — huzlib function declaration types (INTERNAL, INLINE, IMPL)
+│   ├── assert.h     — runtime assertions (DEBUG only)
 │   ├── bst.h        — embedded BST node (the kernel trick)
-│   ├── assert.h     — compile-time and runtime assertions
 │   ├── hints.h      — branch prediction and compiler hints
 │   ├── types.h      — portable type aliases
-│   └── xmacro.h     — X-macro helpers
 │
 └── docs/            — documentation per header
 ```
