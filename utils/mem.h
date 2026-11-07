@@ -72,31 +72,48 @@ static inline uintptr_t __huz_memalign(const uintptr_t addr, const size_t align)
    #pragma intrinsic(memcpy)
    #define huz_memcpy memcpy
 
-// #elif (                    \
-//    defined(__x86_64__) ||  \
-//    defined(_M_X64) ||      \
-//    defined(__i386__) ||    \
-//    defined(_M_IX86)        \
-// )
-//    #include <stddef.h>
-//
-//    /*
-//     * rep movsb is a hardware string fill instruction in assembly,
-//     * since no compilers in this branch has support for __asm__ or __asm,
-//     * you write a tiny standalone assembly file and link it,
-//     *
-//     * eg:
-//     *    .global __huz_memcpy_asm
-//     *    .type __huz_memcpy_asm, @function
-//     *    __huz_memcpy_asm:
-//     *       // Arguments on x86_64: %rdi = dest, %rsi = src, %rdx = n
-//     *       movq %rdi, %rax        # Save original 'dest' pointer so we can return it
-//     *       movq %rdx, %rcx        # Move n into the counter register (%rcx)
-//     *       rep movsb              # Copies %rcx bytes from (%rsi) to (%rdi)
-//     *       ret                    # Return to caller (%rax holds the original dest)
-//     */
-//    extern void *__huz_memcpy_asm(void *restrict dest, const void *restrict src, size_t n);
-//    #define huz_memcpy __huz_memcpy_asm
+#elif (                                            \
+   (defined(__TINYC__) || defined(__SUNPRO_C)) &&  \
+   (defined(__x86_64__) || defined(__i386__))      \
+)
+   #include <stddef.h>
+ 
+   /*
+    * rep movsb is a hardware string copy instruction.
+    * GNU extended inline asm: "+D"/"+S"/"+c" bind dest/src/n to
+    * rdi/rsi/rcx (edi/esi/ecx on 32-bit), which rep movsb consumes
+    * and modifies. DF is guaranteed clear by the ABI.
+    */
+   static inline void *__huz_memcpy_asm(void *restrict dest, const void *restrict src, size_t n)
+   {
+      void *ret = dest;
+      __asm__ volatile (
+         "rep movsb"
+         : "+D"(dest), 
+           "+S"(src), 
+           "+c"(n)
+         :
+         : "memory"
+      );
+      return ret;
+   }
+   #define huz_memcpy __huz_memcpy_asm
+ 
+#elif defined(__POCC__) && defined(_M_IX86)
+   #include <stddef.h>
+ 
+   /* MSVC-style __asm block; Pelles C supports this on 32-bit x86 only. */
+   static void *__huz_memcpy_asm(void *dest, const void *src, size_t n)
+   {
+      __asm {
+         mov edi, dest
+         mov esi, src
+         mov ecx, n
+         rep movsb
+      }
+      return dest;
+   }
+   #define huz_memcpy __huz_memcpy_asm
 
 #else
    #include <stddef.h>
@@ -199,32 +216,44 @@ static inline uintptr_t __huz_memalign(const uintptr_t addr, const size_t align)
    #pragma intrinsic(memset)
    #define huz_memset memset
 
-// #elif (                    \
-//    defined(__x86_64__) ||  \
-//    defined(_M_X64) ||      \
-//    defined(__i386__) ||    \
-//    defined(_M_IX86)        \
-// )
-//    #include <stddef.h>
-//
-//    /*
-//     * rep stob is a hardware string fill instruction in assembly,
-//     * since no compilers in this branch has support for __asm__ or __asm,
-//     * you write a tiny standalone assembly file and link it,
-//     *
-//     * eg:
-//     *    .global __huz_memset_asm
-//     *    .type __huz_memset_asm, @function
-//     *    __huz_memset_asm:
-//     *       // Arguments on x86_64: %rdi = dest, %rsi = ch, %rdx = n
-//     *       movq %rdi, %rax        // Save original dest to return it
-//     *       movb %sil, %al         // Move ch into al
-//     *       movq %rdx, %rcx        // Move n into rcx (counter)
-//     *       rep stosb              // Hardware string fill
-//     *       ret
-//     */ 
-//    extern void *__huz_memset_asm(void *dest, int ch, size_t n);
-//    #define huz_memset __huz_memset_asm
+#elif (                                            \
+   (defined(__TINYC__) || defined(__SUNPRO_C)) &&  \
+   (defined(__x86_64__) || defined(__i386__))      \
+)
+   #include <stddef.h>
+ 
+   /*
+    * rep stosb is a hardware string fill instruction.
+    * stosb stores al; ch is passed in eax via the "a" constraint.
+    */
+   static inline void *__huz_memset_asm(void *dest, int ch, size_t n)
+   {
+      void *ret = dest;
+      __asm__ volatile (
+         "rep stosb"
+         : "+D"(dest), "+c"(n)
+         : "a"(ch)
+         : "memory"
+      );
+      return ret;
+   }
+   #define huz_memset __huz_memset_asm
+ 
+#elif defined(__POCC__) && defined(_M_IX86)
+   #include <stddef.h>
+ 
+   /* MSVC-style __asm block; Pelles C supports this on 32-bit x86 only. */
+   static void *__huz_memset_asm(void *dest, int ch, size_t n)
+   {
+      __asm {
+         mov edi, dest
+         mov eax, ch
+         mov ecx, n
+         rep stosb
+      }
+      return dest;
+   }
+   #define huz_memset __huz_memset_asm
 
 #else
    #include <stddef.h>

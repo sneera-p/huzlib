@@ -12,6 +12,10 @@
  *    HUZ_IMPL_API      - for function not inline hinted (found in HUZ_$$_IMPL section)
  */
 
+#if !(defined(__huz_inline__) && defined(__huz_noinline__) && defined(__huz_export__) && defined(__huz_import__))
+   #error "Need huz inline export import hints"
+#endif
+
 
 // Clean previous definitions
 #undef HUZ_INTERNAL_API
