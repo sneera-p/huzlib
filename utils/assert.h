@@ -1,8 +1,7 @@
 /*
- * __huz_assert(cond)
+ * huz_assert(cond)
  * ---------------------
- * zero-dependency, environment-aware runtime assertion for a boolean condition
- * same as assert() from <assert.h> but work even in -freestanding mode
+ * freestanding safe runtime assertion, same as assert() from <assert.h>
  *
  * BEHAVIOR:
  *   1. NDEBUG defined (Release/Optimized):
@@ -22,38 +21,46 @@
  *        and calls `abort()` on failure.
  *
  * EXAMPLES:
- *   __huz_assert(ptr != NULL);
- *   __huz_assert(index < array_length);
- *   __huz_assert(state == EXPECTED_STATE);
+ *   huz_assert(ptr != NULL);
+ *   huz_assert(index < array_length);
+ *   huz_assert(state == EXPECTED_STATE);
  */
-#ifndef __huz_assert
+#ifndef huz_assert
 #ifdef NDEBUG
 
-   #define __huz_assert(cond) do {           \
-      ((void)0);                             \
-   } while (0)
+   #define huz_assert(cond) ((void)0)
 
 #else
 
    #if defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0)
 
-      #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_LLVM_COMPILER) || defined(__INTEL_COMPILER) || defined(__ARMCOMPILER_VERSION) || defined(__ZIG__) || defined(__xlC__) || defined(__ibmxl__)
-
-         #define __huz_assert(cond) do {     \
-            if (!(cond))                     \
-               __builtin_trap();             \
+      #if (                                  \
+         defined(__GNUC__) ||                \
+         defined(__clang__) ||               \
+         defined(__INTEL_LLVM_COMPILER) ||   \
+         defined(__INTEL_COMPILER) ||        \
+         defined(__ARMCOMPILER_VERSION) ||   \
+         defined(__zig__) ||                 \
+         defined(__xlC__) ||                 \
+         defined(__ibmxl__)                  \
+      )
+         #define huz_assert(cond) do { \
+            if (!(cond))               \
+               __builtin_trap();       \
          } while(0)
 
-      #elif defined(_MSC_VER) || defined(__POCC__)
-
-         #define __huz_assert(cond) do {     \
-            if (!(cond))                     \
-               __debugbreak();               \
+      #elif (                 \
+         defined(_MSC_VER) || \
+         defined(__POCC__)    \
+      )
+         #define huz_assert(cond) do { \
+            if (!(cond))               \
+               __debugbreak();         \
          } while (0)
 
       #else
-
-         #define __huz_assert(cond) do {                 \
+         /* elaborate trap code */
+         #define huz_assert(cond) do {                   \
             if (!(cond)) {                               \
                volatile int *__huz_trap_##__LINE__ = 0;  \
                (void)*__huz_trap_##__LINE__;             \
@@ -65,11 +72,11 @@
    #else
 
       #include <assert.h>
-      #define __huz_assert(cond) do {        \
-         assert(cond);                       \
+      #define huz_assert(cond) do { \
+         assert(cond);              \
       } while (0)
 
    #endif /* __STDC_HOSTED__ */
 
 #endif /* NDEBUG */
-#endif /* __huz_assert */
+#endif /* huz_assert */

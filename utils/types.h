@@ -21,7 +21,7 @@
  */
 
 
-#ifndef HUZLIB_INTERNAL_HAS_TYPEOF
+#ifndef HUZ_INTERNAL_HAS_TYPEOF
 #if (                                           \
    defined(__INTEL_LLVM_COMPILER) ||            \
    defined(__INTEL_COMPILER) ||                 \
@@ -37,15 +37,15 @@
    defined(__clang__) ||                        \
    defined(__GNUC__)                            \
 )
-   #define HUZLIB_INTERNAL_HAS_TYPEOF 1
+   #define HUZ_INTERNAL_HAS_TYPEOF 1
 #else
-   #define HUZLIB_INTERNAL_HAS_TYPEOF 0
+   #define HUZ_INTERNAL_HAS_TYPEOF 0
 #endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPEOF */
+#endif /* HUZ_INTERNAL_HAS_TYPEOF */
 
 
 
-#ifndef HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL
+#ifndef HUZ_INTERNAL_HAS_TYPEOF_UNQUAL
 #if (                                                                         \
    (defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER >= 20230000)) || \
    (defined(__ARMCOMPILER_VERSION) && (__ARMCOMPILER_VERSION >= 130000)) ||   \
@@ -53,15 +53,15 @@
    (defined(__clang__) && (__clang_major__ >= 13)) ||                         \
    (defined(__GNUC__) && (__GNUC__ >= 11))                                    \
 )
-   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 1
+   #define HUZ_INTERNAL_HAS_TYPEOF_UNQUAL 1
 #else
-   #define HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL 0
+   #define HUZ_INTERNAL_HAS_TYPEOF_UNQUAL 0
 #endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPEOF_UNQUAL */
+#endif /* HUZ_INTERNAL_HAS_TYPEOF_UNQUAL */
 
 
 
-#ifndef HUZLIB_INTERNAL_HAS_DECLTYPE
+#ifndef HUZ_INTERNAL_HAS_DECLTYPE
 #if (                                  \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
@@ -70,15 +70,15 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
-   #define HUZLIB_INTERNAL_HAS_DECLTYPE 1
+   #define HUZ_INTERNAL_HAS_DECLTYPE 1
 #else
-   #define HUZLIB_INTERNAL_HAS_DECLTYPE 0
+   #define HUZ_INTERNAL_HAS_DECLTYPE 0
 #endif
-#endif /* HUZLIB_INTERNAL_HAS_DECLTYPE */
+#endif /* HUZ_INTERNAL_HAS_DECLTYPE */
 
 
 
-#ifndef HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE
+#ifndef HUZ_INTERNAL_HAS_TYPES_COMPATIBLE
 #if (                                  \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
@@ -87,15 +87,15 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
-   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 1
+   #define HUZ_INTERNAL_HAS_TYPES_COMPATIBLE 1
 #else
-   #define HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE 0
+   #define HUZ_INTERNAL_HAS_TYPES_COMPATIBLE 0
 #endif
-#endif /* HUZLIB_INTERNAL_HAS_TYPES_COMPATIBLE */
+#endif /* HUZ_INTERNAL_HAS_TYPES_COMPATIBLE */
 
 
 
-#ifndef HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
+#ifndef HUZ_INTERNAL_HAS_STATEMENT_EXPR
 #if (                                  \
    defined(__INTEL_LLVM_COMPILER) ||   \
    defined(__INTEL_COMPILER) ||        \
@@ -105,152 +105,167 @@
    defined(__clang__) ||               \
    defined(__GNUC__)                   \
 )
-   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 1
+   #define HUZ_INTERNAL_HAS_STATEMENT_EXPR 1
 #else
-   #define HUZLIB_INTERNAL_HAS_STATEMENT_EXPR 0
+   #define HUZ_INTERNAL_HAS_STATEMENT_EXPR 0
 #endif
-#endif /* HUZLIB_INTERNAL_HAS_STATEMENT_EXPR */
+#endif /* HUZ_INTERNAL_HAS_STATEMENT_EXPR */
 
 
 
-/* __huzuq(a)
- * -------------------
+/* 
+ * huz_unique(name)
+ * ----------------
  * internal cancatation utility used to
  * create unique tmp varaible name
  *
  * WARN:
  * This macro is the internal implementation and should not be used directly.
  */
-#ifndef __huzuq
-#define HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b) a##b
-#define HUZLIB_UNIQUE_CONCAT(a, b) HUZLIB_UNIQUE_CONCAT_INTERNAL(a, b)
-#define __huzuq(name) HUZLIB_UNIQUE_CONCAT(name, __LINE__)
-#endif /* __huzuq */
+#ifndef huz_unique
+#define __huz_unique_cat__(a, b) a##b
+#define __huz_unique_cat(a, b)   __huz_unique_cat__(a, b)
+#define huz_unique(name)         __huz_unique_cat(name, __LINE__)
+#endif /* huz_unique */
 
 
 
 /*
- * typeof(expr)
- * ------------
+ * huz_typeof(expr)
+ * ----------------
  * Retrieves the exact type of an expression at compile-time.
  */
-#if (__STDC_VERSION__ <= 201710L) && !defined(typeof)
-#if HUZLIB_INTERNAL_HAS_TYPEOF
-   #define typeof(expr) __typeof__(expr)
+#if (__STDC_VERSION__ >= 202311L) || defined(typeof)
+   #define huz_typeof(expr)   typeof(expr)
 
-#elif HUZLIB_INTERNAL_HAS_DECLTYPE
-   #define typeof(expr) __decltype(expr)
+#elif HUZ_INTERNAL_HAS_TYPEOF
+   #define huz_typeof(expr)    __typeof__(expr)
+
+#elif HUZ_INTERNAL_HAS_DECLTYPE
+   #define huz_typeof(expr)    __decltype(expr)
 
 #else
-   #error "Cannot define typeof(expr)"
+   #error "Cannot define huz_typeof(expr)"
 
-#endif
-#endif /* typeof */
+#endif /* huz_typeof */
 
 
 
 /*
- * typeof_member(type, member)
- * ---------------------------
+ * huz_typeof_member(type, member)
+ * -------------------------------
  * Retrieves exact type of type->member
  */
-#ifndef typeof_member
-#define typeof_member(type, member) typeof(((type *)0)->member)
-#endif /* typeof_member */
+#ifndef huz_typeof_member
+#define huz_typeof_member(type, member) huz_typeof(((type *)0)->member)
+#endif /* huz_typeof_member */
 
 
 
 /*
- * sizeof_member(type, member)
- * ---------------------------
+ * huz_sizeof_member(type, member)
+ * -------------------------------
  * Retrieves exact size of type->member
  */
-#ifndef sizeof_member
-#define sizeof_member(type, member) sizeof(typeof_member(type, member))
-#endif /* sizeof_member */
+#ifndef huz_sizeof_member
+#define huz_sizeof_member(type, member) sizeof(huz_typeof_member(type, member))
+#endif /* huz_sizeof_member */
 
 
 
 /*
- * alignof_member(type, member)
- * ---------------------------
+ * huz_alignof_member(type, member)
+ * --------------------------------
  * Retrieves exact align of type->member
  */
-#ifndef alignof_member
+#ifndef huz_alignof_member
 #include <stdalign.h>
-#define alignof_member(type, member) alignof(typeof_member(type, member))
-#endif /* alignof_member */
+#define huz_alignof_member(type, member) alignof(huz_typeof_member(type, member))
+#endif /* huz_alignof_member */
 
 
-
+ 
 /*
- * types_equal(typea, typeb)
- * -------------------------
- * Validates types 'typea' and 'typeb' are the same
- */ 
-#ifndef types_equal
-#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-   #define types_equal(typea, typeb) __extension__ ({ \
-      (void)((typea *)0 == (typeb *)0);               \
-      1;                                              \
-   })
-#else
-   #define types_equal(typea, typeb) (                \
-      sizeof((typea *)0 == (typeb *)0),               \
-      1 \
+ * huz_types_equal(typea, typeb)
+ * -----------------------------
+ * Compile-time check: 1 if the types are compatible, else breaks compile job.
+ *
+ * SEMANTICS:
+ *   Matches on C type compatibility (C11 §6.2.7), not on size or representation.
+ *   Implemented as _Generic((typea *)0, typeb *: 1);
+ *   wrapping both types in a pointer means only the pointer itself is subject
+ *   to _Generic's lvalue conversion, so qualifiers on the types are compared.
+ *
+ *   Returns 1:
+ *     • Identical types:              (int, int)
+ *     • Alternate spellings:          (int, signed int), (long, long int)
+ *     • Typedef aliases:              (int, int32_t)  -- platform-dependent
+ *     • Enum and its underlying type: (enum e, int)   -- implementation-defined
+ *     • Incomplete vs complete array: (int[], int[3])
+ *
+ *   Breaks Compile Time:
+ *     • Distinct integer types, even with equal size or signedness:
+ *         (int, short), (int, unsigned), (int, long), (char, signed char)
+ *     • Differing qualifiers:         (const int, int), (volatile int, int)
+ *     • Arrays of different length:   (int[2], int[3])
+ *
+ * NOTE:
+ *   Fixed-width typedefs vary by platform (int32_t is int on glibc, long on
+ *   some embedded targets). Compare them to themselves, not to base types.
+ *
+ * EXAMPLE:
+ *   _Static_assert(huz_type_equal(int, int32_t), "need int32_t == int");
+ */
+#ifndef huz_types_equal
+#define huz_types_equal(typea, typeb)  \
+   (void)_Generic((typea *)0,          \
+      typeb *: 1                       \
    )
-#endif
-#endif /* types_equal */
+#endif /* huz_types_equal */
 
 
 
 /*
- * typecheck(type, expr)
- * ---------------------
+ * huz_typecheck(type, expr)
+ * -------------------------
  * Validates 'expr' matches 'type'.
  *
  * NOTE:
  * 'type' parameter entered must an unqualified type
  */
-#ifndef typecheck
-#define typecheck(type, expr) ((void)_Generic(  \
-   (expr),                                      \
-   type: 1                                      \
-))
-#endif /* typecheck */
+#ifndef huz_typecheck
+#define huz_typecheck(type, expr) huz_types_equal(type, huz_typeof(expr))
+#endif /* huz_typecheck */
 
 
 
-/* typecheck_member(mtype, vartype, member)
- * -----------------------------------
+/*
+ * huz_typecheck_then(type, expr, result)
+ * --------------------------------------
+ * Validates that 'expr' is of 'type', then evaluates 'result'.
+ */
+#ifndef huz_typecheck_then
+#define huz_typecheck_then(type, expr, result) ((void)huz_typecheck(type, expr), (result))
+#endif /* huz_typecheck_then */
+
+
+
+/*
+ * huz_typecheck_member(mtype, vartype, member)
+ * --------------------------------------------
  * Validated 'vartype->member' matches 'mtype'
  *
  * NOTE:
- * 'mtype' parameter entered must an unqualified type
+ *  'mtype' parameter entered must an unqualified type
  */
-#ifndef typecheck_member
-#define typecheck_member(mtype, vartype, member) typecheck(mtype, ((vartype *)0)->member)
-#endif /* typecheck_member */
+#ifndef huz_typecheck_member
+#define huz_typecheck_member(mtype, vartype, member) huz_types_equal(mtype, huz_typeof_member(type, member))
+#endif /* huz_typecheck_member */
 
 
 
 /*
- * typecheck_expr(type, var, expr)
- * -------------------------------
- * Validates that 'var' is of 'type', then evaluates 'expr'.
- *
- * Features:
- *    - Qualifier Agnostic:   Accepts type, const type, volatile type, and const volatile type.
- *    - Safe sideeffects:     sideeffect expressions will be evaluated exactly once
- */
-#ifndef typecheck_expr
-#define typecheck_expr(type, var, expr) ((void)typecheck(type, var), (expr))
-#endif /* typecheck_expr */
-
-
-
-/*
- * __requal_expr(ptr, type, expr)
+ * huz_requal_expr(ptr, type, expr)
  * --------------------------------
  * Restores CV-qualifiers from ptr onto type, then casts expr to the result.
  *
@@ -269,19 +284,19 @@
  * NOTE: To preserve const instead of volatile for const volatile pointers,
  * move the const branch above the volatile branch.
  */
-#ifndef __requal_expr
-#define __requal_expr(ptr, type, expr) _Generic((ptr),               \
-   volatile typeof(*(ptr)) *: ((volatile type *)(expr)),             \
-   const typeof(*(ptr)) *:    ((const type *)(expr)),                \
-   default:                   ((type *)(expr))                       \
+#ifndef huz_requal_expr
+#define huz_requal_expr(ptr, type, expr) _Generic((ptr),       \
+   volatile huz_typeof(*(ptr)) *: ((volatile type *)(expr)),   \
+   const huz_typeof(*(ptr)) *:    ((const type *)(expr)),      \
+   default:                   ((type *)(expr))                 \
 )
-#endif /* __requal_expr */
+#endif /* huz_requal_expr */
 
 
 
 /*
- * container_of(ptr, type, member)
- * -------------------------------
+ * huz_container_of(ptr, type, member)
+ * -----------------------------------
  * cast a member of a structure out to the containing structure
  *
  * @ptr:    pointer to member
@@ -290,11 +305,13 @@
  *
  * Return: pointer to the containing structure
  */
-#if !defined(container_of) && (__STDC_VERSION__ <= 202311L) 
+#if (__STDC_VERSION__ > 202311L) || defined(container_of)
+   #define huz_container_of(ptr, type, member)  container_of((ptr), (type), (member))
 
+#else
 /*
- * __container_of_raw(ptr, type, member)
- * --------------------------------------
+ * __huz_container_of_raw(ptr, type, member)
+ * -----------------------------------------
  * Computes a pointer to the containing structure by subtracting the offset
  * of member from ptr. No type checking is performed.
  *
@@ -302,47 +319,47 @@
  * This macro is the internal implementation and should not be used directly.
  */
 #include <stddef.h>
-#define __container_of_raw(ptr, type, member) \
+#define __huz_container_of_raw(ptr, type, member) \
    ((type *)((char *)(ptr) - offsetof(type, member)))
 
 
 /*
- * __container_of_unqual(ptr, type, member)
- * -----------------------------------------
- * Type-checked wrapper around __container_of_raw() that verifies ptr points
+ * __huz_container_of_unqual(ptr, type, member)
+ * --------------------------------------------
+ * Type-checked wrapper around __huz_container_of_raw() that verifies ptr points
  * to the correct member type before performing the offset arithmetic.
  *
- * Returns a bare type * with no CV-qualifiers preserved. Use container_of()
- * which wraps this with __requal_expr() to restore qualifiers on the result.
+ * Returns a bare type * with no CV-qualifiers preserved. Use huz_container_of()
+ * which wraps this with huz_requal_expr() to restore qualifiers on the result.
  *
  * WARNING:
  * This macro is the internal implementation and should not be used directly.
  */
-#if HUZLIB_INTERNAL_HAS_STATEMENT_EXPR
-   #define __container_of_unqual(ptr, type, member) __extension__ ({ \
-      const typeof(((type *)0)->member) *__mcumptr = (ptr);          \
-      __container_of_raw(__mcumptr, type, member);                   \
+#if HUZ_INTERNAL_HAS_STATEMENT_EXPR
+   #define __huz_container_of_unqual(ptr, type, member) __extension__ ({      \
+      const huz_typeof_member(type, member) *__mcumptr = (ptr);               \
+      __huz_container_of_raw(__mcumptr, type, member);                        \
    })
 
 #else
-   #define __container_of_unqual(ptr, type, member) typecheck_expr(  \
-      typeof(((type *)0)->member), *(ptr),                           \
-      __container_of_raw(ptr, type, member)                          \
+   #define __huz_container_of_unqual(ptr, type, member) huz_typecheck_then(   \
+      huz_typeof_member(type, member), *(ptr),                                \
+      __huz_container_of_raw(ptr, type, member)                               \
    )
 
 #endif
 
 
-#define container_of(ptr, type, member) \
-   __requal_expr(ptr, type, __container_of_unqual(ptr, type, member))
+#define huz_container_of(ptr, type, member) \
+   huz_requal_expr(ptr, type, __huz_container_of_unqual(ptr, type, member))
 
-#endif /* container_of */
+#endif /* huz_container_of */
 
 
 
 /*
- * SWAP(a, b)
- * ----------
+ * HUZ_SWAP(a, b)
+ * --------------
  * Swaps the values of variables @a and @b using a temporary variable
  *
  * This macro works with any data type, including structures and unions, as
@@ -354,20 +371,20 @@
  * expressions with side effects such as i++, *p++, or function calls.
  * Doing so will result in undefined behavior.
  */
-#ifndef SWAP
-#define SWAP(a, b) do {             \
-   typecheck(typeof(a), b);         \
-   typeof(a) __huzuq(__tmp) = a;    \
-   a = b;                           \
-   b = __huzuq(__tmp);              \
+#ifndef HUZ_SWAP
+#define HUZ_SWAP(a, b) do {               \
+   huz_types_equal(a, b);                 \
+   huz_typeof(a) huz_unique(__tmp) = a;   \
+   a = b;                                 \
+   b = huz_unique(__tmp);                 \
 } while (0)
-#endif
+#endif /* HUZ_SWAP */
 
 
 
 /*
- * swap(a, b)
- * ----------
+ * huz_swap(a, b)
+ * --------------
  * Swaps the values of variables @a and @b using temporary variable pointers
  *
  * This macro works with any data type, including structures and unions, as
@@ -375,22 +392,22 @@
  * be of exactly the same type, but they must be assignment-compatible.
  *
  * NOTE:
- * This macro is sideeffect-free unlike it's cousin SWAP(a, b).
- * But it might be slow in some contexts. Use SWAP(...) when possible
+ * This macro is sideeffect-free unlike it's cousin HUZ_SWAP(a, b).
+ * But it might be slow in some contexts. Use HUZ_SWAP(...) when possible
  */
-#ifndef swap
-#define swap(a, b) do {                \
-   typeof(a) *__huzuq(__a) = &(a);     \
-   typeof(b) *__huzuq(__b) = &(b);     \
-   SWAP(*__huzuq(__a), *__huzuq(__b)); \
+#ifndef huz_swap
+#define huz_swap(a, b) do {                        \
+   huz_typeof(a) *huz_unique(__a) = &(a);          \
+   huz_typeof(b) *huz_unique(__b) = &(b);          \
+   HUZ_SWAP(*huz_unique(__a), *huz_unique(__b));   \
 } while (0)
-#endif
+#endif /* huz_swap */
 
 
 
 /*
- * tmpptr(type, ...)
- * -----------------
+ * huz_tmpptr(type, ...)
+ * ---------------------
  * INTENT:
  *   Standard C prohibits taking the address of rvalues or temporary expressions
  *   (e.g., `&42` or `&(x + 1)` is a compile error). This macro materializes one
@@ -435,13 +452,14 @@
  *   void push_bytes(const void *data, size_t len);
  *
  *   // ✓ Safe: Consumed immediately
- *   push_bytes(tmpptr(int, 42), sizeof(int));
- *   push_bytes(tmpptr(double, 1.0, 2.0, 3.0), 3 * sizeof(double));
+ *   push_bytes(huz_tmpptr(int, 42), sizeof(int));
+ *   push_bytes(huz_tmpptr(double, 1.0, 2.0, 3.0), 3 * sizeof(double));
  *
  *   // ✗ WRONG: Pointer escapes block scope → Undefined Behavior
- *   int *p = tmpptr(int, 10);
- *   return tmpptr(char, 'A');
+ *   int *p = huz_tmpptr(int, 10);
+ *   return huz_tmpptr(char, 'A');
  */
-#ifndef tmpptr
-#define tmpptr(type, ...) ((type[]) { __VA_ARGS__ })
-#endif /* tmpptr */
+#ifndef huz_tmpptr
+#define huz_tmpptr(type, ...) ((type[]) { __VA_ARGS__ })
+#endif /* huz_tmpptr */
+
