@@ -13,6 +13,7 @@
 
 **Generic data structures and algorithms for C — no bloat, no templates, performance oriented.**
 
+[![License](https://img.shields.io/github/license/sneera-p/huzlib?style=flat-square)](LICENSE)
 [![C11](https://img.shields.io/badge/C-C11-blue?style=flat-square)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![Single Header](https://img.shields.io/badge/style-single--header-orange?style=flat-square)](#)
 [![Zero Dependencies](https://img.shields.io/badge/deps-zero-red?style=flat-square)](#)
@@ -292,6 +293,13 @@ huzlib is being extended with translation layers for:
 **Interpreted / scripted** — Python · Lua
 
 Each binding will wrap the C header interface cleanly so you can use these data structures from your language without rewriting them.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0.
+See the [LICENSE](LICENSE) file for details.
 
 ---
 
